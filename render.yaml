@@ -3,7 +3,7 @@ services:
     name: floorguard
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm run server:prod
     healthCheckPath: /api/health
     envVars:
