@@ -14,9 +14,9 @@ export default {
           elevated: '#1C293C',
         },
         cyan: {
-          DEFAULT: '#35E0D0',
-          glow: 'rgba(53, 224, 208, 0.25)',
-          dark: '#1fa396',
+          DEFAULT: '#F6BD16',
+          glow: 'rgba(246, 189, 22, 0.25)',
+          dark: '#B77900',
         },
         signal: {
           blue: '#438BFF',

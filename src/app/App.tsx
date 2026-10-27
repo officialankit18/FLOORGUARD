@@ -1,24 +1,34 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Navbar } from '../components/layout/Navbar';
-import { Footer } from '../components/layout/Footer';
-import { HomePage } from '../pages/HomePage';
-import { SecurityCenterPage } from '../pages/SecurityCenterPage';
+import { MobileAppChrome } from '../components/layout/MobileAppChrome';
+import { DashboardPage } from '../pages/DashboardPage';
+import { CameraPage } from '../pages/CameraPage';
+import { SettingsPage } from '../pages/SettingsPage';
+import { SplashScreen } from '../components/branding/SplashScreen';
+import { useAlertNotifications } from '../hooks/useAlertNotifications';
 
 export const App: React.FC = () => {
+  useAlertNotifications();
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setIsLoading(false), 1800);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  if (isLoading) return <SplashScreen />;
+
   return (
     <BrowserRouter>
-      <div className="flex flex-col min-h-screen bg-bg-primary text-text-primary selection:bg-cyan selection:text-bg-primary">
-        <Navbar />
-        <div className="flex-1">
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/security" element={<SecurityCenterPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </div>
-        <Footer />
-      </div>
+      <MobileAppChrome>
+        <Routes>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/camera" element={<CameraPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/project" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </MobileAppChrome>
     </BrowserRouter>
   );
 };

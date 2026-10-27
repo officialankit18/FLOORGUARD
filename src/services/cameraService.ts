@@ -27,6 +27,9 @@ export class CameraService {
   }
 
   public static async startStream(deviceId?: string, facingMode: 'user' | 'environment' = 'user'): Promise<MediaStream> {
+    if (!window.isSecureContext) {
+      throw new Error('Phone camera needs a secure HTTPS link. Open FLOORGUARD through its HTTPS address, then allow camera access.');
+    }
     if (!await this.isCameraSupported()) {
       throw new Error('Your browser does not support camera capture via getUserMedia.');
     }

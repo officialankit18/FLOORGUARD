@@ -11,6 +11,8 @@ build/
 .env
 .env.local
 .env.*.local
+secrets/
+*.service-account.json
 
 # Logs
 logs
@@ -21,7 +23,7 @@ yarn-error.log*
 pnpm-debug.log*
 
 # Server local persistent DB (keep schema / template)
-server/data/db.json
+server/data/*.json
 
 # Editor & OS files
 .vscode/

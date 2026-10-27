@@ -51,6 +51,7 @@ export const enrollProfile = (req: Request, res: Response) => {
   });
 };
 
+
 export const deleteProfile = (req: Request, res: Response) => {
   const { id } = req.params;
   const deleted = store.deleteProfile(id);

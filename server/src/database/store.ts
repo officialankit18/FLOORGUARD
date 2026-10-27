@@ -3,6 +3,7 @@ import path from 'path';
 import { SecurityEvent } from '../../src/types/events';
 import { EnrolledProfile } from '../../src/types/profiles';
 import { DeviceTelemetry } from '../../src/types/device';
+import { clearCollection, removeEvent, removeProfile, saveDevice, saveEvent, saveProfile } from '../services/mongoPersistence';
 
 interface DatabaseSchema {
   devices: DeviceTelemetry[];
@@ -10,7 +11,9 @@ interface DatabaseSchema {
   profiles: EnrolledProfile[];
 }
 
-const DB_FILE = path.resolve(process.cwd(), 'server', 'data', 'db.json');
+const DB_FILE = process.env.VITEST
+  ? path.resolve(process.cwd(), 'server', 'data', `db.test-${process.pid}.json`)
+  : path.resolve(process.cwd(), 'server', 'data', 'db.json');
 
 const INITIAL_DATA: DatabaseSchema = {
   devices: [
@@ -111,6 +114,7 @@ class Store {
     if (idx !== -1) {
       this.data.devices[idx] = { ...this.data.devices[idx], ...updates };
       this.save(this.data);
+      void saveDevice(this.data.devices[idx]).catch((error) => console.warn('[Firebase] Device sync failed:', error.message));
       return this.data.devices[idx];
     }
     return undefined;
@@ -124,6 +128,7 @@ class Store {
       this.data.devices.push(device);
     }
     this.save(this.data);
+    void saveDevice(device).catch((error) => console.warn('[Firebase] Device sync failed:', error.message));
     return device;
   }
 
@@ -141,6 +146,7 @@ class Store {
       this.data.events = this.data.events.slice(0, 500);
     }
     this.save(this.data);
+    void saveEvent(event).catch((error) => console.warn('[Firebase] Event sync failed:', error.message));
     return event;
   }
 
@@ -155,6 +161,7 @@ class Store {
       event.acknowledgedAt = new Date().toISOString();
       event.acknowledgedBy = acknowledgedBy;
       this.save(this.data);
+      void saveEvent(event).catch((error) => console.warn('[Firebase] Event sync failed:', error.message));
       return event;
     }
     return undefined;
@@ -165,6 +172,7 @@ class Store {
     this.data.events = this.data.events.filter(e => e.id !== id);
     if (this.data.events.length !== initialLen) {
       this.save(this.data);
+      void removeEvent(id).catch((error) => console.warn('[Firebase] Event deletion sync failed:', error.message));
       return true;
     }
     return false;
@@ -173,6 +181,7 @@ class Store {
   public clearEvents(): void {
     this.data.events = [];
     this.save(this.data);
+    void clearCollection('events').catch((error) => console.warn('[MongoDB] Event clear sync failed:', error.message));
   }
 
   // --- Profiles ---
@@ -183,6 +192,7 @@ class Store {
   public addProfile(profile: EnrolledProfile): EnrolledProfile {
     this.data.profiles.push(profile);
     this.save(this.data);
+    void saveProfile(profile).catch((error) => console.warn('[Firebase] Profile sync failed:', error.message));
     return profile;
   }
 
@@ -191,14 +201,40 @@ class Store {
     this.data.profiles = this.data.profiles.filter(p => p.id !== id);
     if (this.data.profiles.length !== initialLen) {
       this.save(this.data);
+      void removeProfile(id).catch((error) => console.warn('[Firebase] Profile deletion sync failed:', error.message));
       return true;
     }
     return false;
   }
 
+  public updateProfilePhoto(id: string, photoStoragePath: string): EnrolledProfile | undefined {
+    const profile = this.data.profiles.find((item) => item.id === id);
+    if (!profile) return undefined;
+    profile.photoPreviewUrl = `/api/profiles/${id}/photo`;
+    profile.photoStoragePath = photoStoragePath;
+    this.save(this.data);
+    void saveProfile(profile).catch((error) => console.warn('[Firebase] Profile photo sync failed:', error.message));
+    return profile;
+  }
+
   public clearProfiles(): void {
     this.data.profiles = [];
     this.save(this.data);
+    void clearCollection('profiles').catch((error) => console.warn('[MongoDB] Profile clear sync failed:', error.message));
+  }
+
+  public setCloudSnapshot(data: DatabaseSchema) {
+    this.data = data;
+    this.save(this.data);
+  }
+
+  public updateEventSnapshot(id: string, snapshotStoragePath: string): SecurityEvent | undefined {
+    const event = this.data.events.find((item) => item.id === id);
+    if (!event) return undefined;
+    event.metadata = { ...event.metadata, snapshotUrl: `/api/events/${id}/snapshot`, snapshotStoragePath };
+    this.save(this.data);
+    void saveEvent(event).catch((error) => console.warn('[Firebase] Snapshot sync failed:', error.message));
+    return event;
   }
 }
 

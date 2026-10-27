@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { DeviceTelemetry, SystemMode, SystemStatusState } from '../types/device';
 import { ApiClient } from '../services/apiClient';
 
-const WS_URL = import.meta.env.VITE_WS_URL || `ws://${window.location.hostname}:3001/ws`;
+const WS_URL = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
 
 export function useDeviceStatus() {
   const [device, setDevice] = useState<DeviceTelemetry>({

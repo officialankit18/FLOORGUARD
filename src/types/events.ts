@@ -34,6 +34,7 @@ export interface SecurityEvent {
     recognizedName?: string;
     distance?: number;
     snapshotUrl?: string;
+    snapshotStoragePath?: string;
     details?: string;
   };
 }

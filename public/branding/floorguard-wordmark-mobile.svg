@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 310" role="img" aria-labelledby="title description">
+  <title id="title">FLOORGUARD</title>
+  <desc id="description">FLOORGUARD Smart Anti-Theft Floor Mat</desc>
+  <rect width="1200" height="310" rx="24" fill="#ffffff"/>
+  <text x="600" y="158" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-size="132" font-weight="900" letter-spacing="-8">
+    <tspan fill="#111820">FLOOR</tspan><tspan fill="#e31b23">GUARD</tspan>
+  </text>
+  <g fill="#e31b23">
+    <rect x="82" y="219" width="138" height="9" rx="4.5"/>
+    <rect x="980" y="219" width="138" height="9" rx="4.5"/>
+  </g>
+  <text x="600" y="252" text-anchor="middle" fill="#111820" font-family="Arial, sans-serif" font-size="37" font-weight="800" letter-spacing="12">SMART ANTI-THEFT FLOOR MAT</text>
+</svg>

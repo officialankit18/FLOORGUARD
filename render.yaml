@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: floorguard
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run server:prod
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_DATABASE
+        value: AntiTheftDB
+      - key: MONGODB_URI
+        sync: false
+      - key: MQTT_URL
+        sync: false
+      - key: MQTT_USERNAME
+        sync: false
+      - key: MQTT_PASSWORD
+        sync: false
+      - key: MQTT_TOPIC_PREFIX
+        sync: false

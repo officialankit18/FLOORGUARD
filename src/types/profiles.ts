@@ -4,6 +4,7 @@ export interface EnrolledProfile {
   role: 'Resident' | 'Authorized Staff' | 'Maintenance' | 'Guest' | 'Administrator';
   enrolledAt: string;
   photoPreviewUrl?: string; // Stored locally as data URI or blob preview for authorized verification
+  photoStoragePath?: string;
   descriptor: number[]; // 128-dimensional floating point embedding vector
   notes?: string;
   consentGranted: boolean;

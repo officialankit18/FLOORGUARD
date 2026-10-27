@@ -6,15 +6,16 @@ export class FaceRecognitionService {
   private static isInitialized = false;
   private static isLoading = false;
   private static initError: string | null = null;
+  private static initializationPromise: Promise<void> | null = null;
 
   public static async initialize(): Promise<void> {
     if (this.isInitialized) return;
-    if (this.isLoading) return;
+    if (this.initializationPromise) return this.initializationPromise;
 
     this.isLoading = true;
     this.initError = null;
-
-    try {
+    this.initializationPromise = (async () => {
+      try {
       const MODEL_URL = '/models';
 
       console.log('[Face-API] Loading pre-trained recognition models from', MODEL_URL);
@@ -27,13 +28,16 @@ export class FaceRecognitionService {
 
       this.isInitialized = true;
       console.log('[Face-API] Face detection, 68 landmarks, and 128-d recognition nets ready.');
-    } catch (err: any) {
+      } catch (err: any) {
       console.error('[Face-API] Failed loading recognition models:', err);
       this.initError = err.message || 'Failed to load face recognition models from local server.';
       throw err;
-    } finally {
+      } finally {
       this.isLoading = false;
-    }
+      this.initializationPromise = null;
+      }
+    })();
+    return this.initializationPromise;
   }
 
   public static isReady(): boolean {
@@ -93,11 +97,12 @@ export class FaceRecognitionService {
    * Run real-time detection, landmarks, and identity comparison against enrolled reference profiles
    */
   public static async processVideoFrame(
-    videoElement: HTMLVideoElement,
+    videoElement: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement,
     enrolledProfiles: EnrolledProfile[],
     threshold = 0.58
   ): Promise<FaceDetectionResult[]> {
-    if (!this.isInitialized || !videoElement || videoElement.videoWidth === 0) return [];
+    const sourceWidth = videoElement instanceof HTMLVideoElement ? videoElement.videoWidth : videoElement instanceof HTMLImageElement ? videoElement.naturalWidth : videoElement.width;
+    if (!this.isInitialized || !videoElement || sourceWidth === 0) return [];
 
     const options = new faceapi.TinyFaceDetectorOptions({
       inputSize: 320,
