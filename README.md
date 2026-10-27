@@ -97,3 +97,5 @@ npm run build
 - [REST & WebSocket API Reference](docs/api.md)
 - [Hardware & IoT Integration Guide](docs/device-integration.md)
 - [Setup & Deployment Guide](docs/setup.md)
+
+This is a full functional and operational FLOORGUARD website.
