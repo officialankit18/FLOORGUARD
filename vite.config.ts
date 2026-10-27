@@ -10,7 +10,7 @@ function offlineShell() {
     apply: 'build' as const,
     writeBundle(_options: unknown, bundle: Record<string, any>) {
       const assets = Object.values(bundle).filter(item => item.type === 'chunk' && item.isEntry || item.fileName?.endsWith('.css')).map(item => '/' + item.fileName);
-      const shell = ['/index.html', '/manifest.webmanifest', '/branding/floorguard-wordmark.svg', '/icons/emblem-v2.png', '/icons/favicon-v2.png', '/icons/icon-192-v2.png', '/icons/icon-512-v2.png', '/icons/maskable-192-v2.png', '/icons/maskable-512-v2.png', ...assets];
+      const shell = ['/index.html', '/manifest.webmanifest', '/branding/floorguard-wordmark.svg', '/icons/emblem-transparent.png', '/icons/favicon-v2.png', '/icons/icon-192-v2.png', '/icons/icon-512-v2.png', '/icons/maskable-192-v2.png', '/icons/maskable-512-v2.png', ...assets];
       const hash = createHash('sha256').update(JSON.stringify(assets)).update(fs.readFileSync('public/sw.js'));
       shell.filter(file => !file.startsWith('/assets/')).forEach(file => hash.update(fs.readFileSync('dist' + file)));
       const version = hash.digest('hex').slice(0, 12);

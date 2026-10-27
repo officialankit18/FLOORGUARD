@@ -64,3 +64,13 @@ self.addEventListener('notificationclick', event => {
     return existing ? existing.focus() : self.clients.openWindow('/');
   }));
 });
+
+self.addEventListener('push', event => {
+  let payload;
+  try { payload = event.data.json(); } catch { return; }
+  event.waitUntil(self.registration.showNotification(payload.title || 'FLOORGUARD', {
+    body: payload.body, tag: payload.id, silent: !!payload.silent,
+    icon: '/icons/icon-192-v2.png', badge: '/icons/icon-192-v2.png',
+    requireInteraction: !payload.silent,
+  }));
+});

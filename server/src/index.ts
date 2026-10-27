@@ -4,6 +4,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { WebSocketServer } from 'ws';
 import path from 'path';
+import { pushConfig, subscribePush, pushReady } from './services/pushService';
 
 import { initWebSocketServer } from './services/websocketService';
 import { startMqttBridge } from './services/mqttBridge';
@@ -16,6 +17,8 @@ import {
 } from './controllers/deviceController';
 import {
   getEvents,
+  getSnapshot,
+  saveSnapshot,
   getEventById,
   createEvent,
   acknowledgeEvent,
@@ -51,6 +54,8 @@ async function fetchCamera(url: string) {
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.get('/api/push/config', pushConfig);
+app.post('/api/push/subscribe', subscribePush);
 
 // Local dashboard configuration. These values are intentionally returned only
 // to the local app because browser MQTT clients need their restricted broker account.
@@ -97,6 +102,7 @@ app.get('/api/health', async (_req, res) => {
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     mongo: await getMongoStatus(),
+    push: pushReady() ? 'Configured' : 'Keys needed',
   });
 });
 
@@ -109,6 +115,8 @@ app.post('/api/devices/:id/mode', setDeviceMode);
 
 // Event Management Endpoints
 app.get('/api/events', getEvents);
+app.get('/api/events/:id/snapshot', getSnapshot);
+app.patch('/api/events/:id/snapshot', saveSnapshot);
 app.get('/api/events/:id', getEventById);
 app.post('/api/events', createEvent);
 app.patch('/api/events/:id/acknowledge', acknowledgeEvent);

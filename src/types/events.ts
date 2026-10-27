@@ -1,6 +1,13 @@
 import { SystemMode } from './device';
 
 export type EventType =
+  | 'Door Open Requested'
+  | 'Door Close Requested'
+  | 'Door Opened'
+  | 'Door Signal Confirmed'
+  | 'Alarm Stopped'
+  | 'Alarm Stop Confirmed'
+  | 'Visitor Attended'
   | 'Footstep Event'
   | 'Potential Intrusion'
   | 'Face Detected'
@@ -19,7 +26,7 @@ export interface SecurityEvent {
   id: string;
   timestamp: string;
   eventType: EventType;
-  source: 'Floor Mat Sensor' | 'ESP32-CAM' | 'Local Browser Camera' | 'System Controller' | 'User Action';
+  source: 'Floor Mat Sensor' | 'ESP32-CAM' | 'Local Browser Camera' | 'System Controller' | 'User Action' | 'Face Verification';
   description: string;
   severity: EventSeverity;
   mode: SystemMode;
@@ -27,6 +34,8 @@ export interface SecurityEvent {
   acknowledgedAt?: string;
   acknowledgedBy?: string;
   metadata?: {
+    relatedEventId?: string;
+    cameraRole?: 'entrance' | 'floor';
     piezoVoltage?: number;
     piezoReading?: number;
     faceConfidence?: number;
@@ -40,6 +49,8 @@ export interface SecurityEvent {
 }
 
 export interface EventFilterCriteria {
+  from?: string;
+  to?: string;
   eventType?: string;
   severity?: string;
   mode?: string;

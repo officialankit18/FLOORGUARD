@@ -9,6 +9,8 @@ import {
 } from '../server/src/controllers/deviceController';
 import {
   getEvents,
+  getSnapshot,
+  saveSnapshot,
   createEvent,
   acknowledgeEvent,
   deleteEvent,
@@ -41,6 +43,8 @@ describe('FLOOR GUARD Express REST API Integration Tests', () => {
 
     // Events
     app.get('/api/events', getEvents);
+    app.get('/api/events/:id/snapshot', getSnapshot);
+    app.patch('/api/events/:id/snapshot', saveSnapshot);
     app.post('/api/events', createEvent);
     app.patch('/api/events/:id/acknowledge', acknowledgeEvent);
     app.delete('/api/events/:id', deleteEvent);
@@ -71,6 +75,29 @@ describe('FLOOR GUARD Express REST API Integration Tests', () => {
     const body = await res.json();
     expect(body.status).toBe('ONLINE');
     expect(body.project).toBe('FLOOR GUARD');
+  });
+
+  it('keeps images out of history lists but serves saved incident snapshots', async () => {
+    const created = await fetch(`${baseUrl}/events`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({eventType:'Potential Intrusion',source:'Floor Mat Sensor',description:'Snapshot integration test'})}).then(r=>r.json());
+    const id = created.data.id;
+    const patch = await fetch(`${baseUrl}/events/${id}/snapshot`, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({snapshotUrl:'data:image/jpeg;base64,/9j/2Q=='})});
+    expect(patch.status).toBe(200);
+    const list = await fetch(`${baseUrl}/events`).then(r=>r.json());
+    expect(list.data.find((item:any)=>item.id===id).metadata.snapshotUrl).toBe(`/api/events/${id}/snapshot`);
+    const image = await fetch(`${baseUrl}/events/${id}/snapshot`);
+    expect(image.headers.get('content-type')).toContain('image/jpeg');
+    expect((await image.arrayBuffer()).byteLength).toBe(4);
+    const invalid = await fetch(`${baseUrl}/events/${id}/snapshot`, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({snapshotUrl:'javascript:alert(1)'})});
+    expect(invalid.status).toBe(400);
+  });
+
+  it('deduplicates a member arrival across two monitoring clients', async () => {
+    const data = {eventType:'Known Face Match',source:'ESP32-CAM',description:'Member arrived',metadata:{recognizedName:'Unique test member'}};
+    const post = (body:object) => fetch(`${baseUrl}/events`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json());
+    const first = await post(data);
+    const second = await post({...data,source:'Local Browser Camera'});
+    expect(second.deduplicated).toBe(true);
+    expect(second.data.id).toBe(first.data.id);
   });
 
   it('GET /api/devices returns registered smart mat device', async () => {

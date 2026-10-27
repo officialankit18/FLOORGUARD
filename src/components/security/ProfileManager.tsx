@@ -126,8 +126,8 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
 
       const res = await ApiClient.enrollProfile(payload);
       if (res.success) {
-        setSuccessMsg(`Profile "${res.data.name}" enrolled successfully with 128-d descriptor.`);
         resetForm();
+        setSuccessMsg(`${res.data.name} added to your household.`);
         onProfilesChanged();
       }
     } catch (err: any) {
@@ -161,237 +161,27 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
     }
   };
 
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title="Authorized Face Profile Management"
-      subtitle="Consent-Based Reference Enrollment & Identity Verification"
-      maxWidth="2xl"
-    >
-      <div className="space-y-6">
-        
-        {/* Privacy & Authorization Notice */}
-        <div className="p-3.5 rounded-xl bg-bg-secondary border border-border flex items-start gap-3 text-xs">
-          <Lock className="w-4 h-4 text-cyan shrink-0 mt-0.5" />
-          <div className="space-y-1 text-text-secondary">
-            <span className="font-semibold text-text-primary">
-              Biometric Privacy Architecture:
-            </span>
-            <p className="leading-relaxed">
-              FLOOR GUARD computes mathematical face embeddings locally in your browser. Biometric descriptors are compared only against deliberately enrolled reference faces on this deployment. No third-party facial scraping or public sharing occurs.
-            </p>
+  return <Modal isOpen={isOpen} onClose={onClose} title="Household members" subtitle="Add the people who belong at home." maxWidth="lg">
+    <div className="fg-members space-y-5">
+      <form onSubmit={handleEnroll} className="fg-card space-y-5">
+        <div><h4 className="text-lg font-bold">Add a member</h4><p className="text-sm mt-1">A name and one clear photo. That’s it.</p></div>
+        <fieldset disabled={isProcessing} className="space-y-5 min-w-0">
+          <label className="block text-sm font-semibold">Full name<input autoComplete="off" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Alex Taylor" maxLength={80} required /></label>
+          <div className="fg-member-photo">
+            {photoPreview ? <img src={photoPreview} alt="Selected member photo" /> : <div className="fg-member-placeholder"><Camera size={32} /><span>Member photo</span></div>}
+            <p>Use a clear photo of one person, facing the camera.</p>
+            <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleFileChange} hidden aria-label="Choose member photo" />
+            <div className="flex flex-wrap justify-center gap-2 mt-4"><button type="button" className="fg-button secondary" onClick={() => fileInputRef.current?.click()}><Upload size={16} />{photoPreview ? 'Change photo' : 'Choose photo'}</button>{onCaptureSnapshot && <button type="button" className="fg-button secondary" onClick={handleCaptureCamera}><Camera size={16} />Use camera</button>}</div>
           </div>
-        </div>
-
-        {/* Enrollment Form */}
-        <form onSubmit={handleEnroll} className="bg-bg-elevated/40 border border-border rounded-xl p-5 space-y-4">
-          <h4 className="font-bold text-text-primary text-sm flex items-center gap-2">
-            <UserPlus className="w-4 h-4 text-cyan" />
-            <span>Enroll New Reference Individual</span>
-          </h4>
-
-          {/* Form Inputs Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-mono text-text-secondary mb-1">
-                Display Name *
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Adarsh Srivastava"
-                className="w-full px-3 py-2 rounded-lg bg-bg-card border border-border text-sm text-text-primary focus:outline-none focus:border-cyan"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-mono text-text-secondary mb-1">
-                Authorization Role
-              </label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as any)}
-                className="w-full px-3 py-2 rounded-lg bg-bg-card border border-border text-sm text-text-primary focus:outline-none focus:border-cyan"
-              >
-                <option value="Resident">Resident</option>
-                <option value="Authorized Staff">Authorized Staff</option>
-                <option value="Maintenance">Maintenance</option>
-                <option value="Guest">Guest</option>
-                <option value="Administrator">Administrator</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Photo Input & Preview */}
-          <div>
-            <label className="block text-xs font-mono text-text-secondary mb-1">
-              Reference Face Photo *
-            </label>
-            <div className="flex flex-wrap items-center gap-3">
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                accept="image/png, image/jpeg, image/webp"
-                className="hidden"
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                icon={<Upload className="w-3.5 h-3.5" />}
-              >
-                Upload File
-              </Button>
-              {onCaptureSnapshot && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCaptureCamera}
-                  icon={<Camera className="w-3.5 h-3.5" />}
-                >
-                  Snap from Live Camera
-                </Button>
-              )}
-            </div>
-
-            {/* Photo Preview Thumbnail */}
-            {photoPreview && (
-              <div className="mt-3 flex items-center gap-3 p-2 bg-bg-card rounded-lg border border-border">
-                <img
-                  src={photoPreview}
-                  alt="Reference Preview"
-                  className="w-14 h-14 object-cover rounded-md border border-cyan/40"
-                />
-                <div className="text-xs">
-                  <span className="text-state-success font-mono font-semibold flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Photo Staged
-                  </span>
-                  <span className="text-text-muted block text-[11px]">
-                    Face detector will compute 128-d descriptor on submit.
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Explicit Consent Checkbox */}
-          <div className="pt-2">
-            <label className="flex items-start gap-2 cursor-pointer text-xs text-text-secondary select-none">
-              <input
-                type="checkbox"
-                checked={consent}
-                onChange={(e) => setConsent(e.target.checked)}
-                className="mt-0.5 rounded border-border text-cyan focus:ring-cyan bg-bg-card"
-                required
-              />
-              <span>
-                I confirm that this person has given explicit authorization to register their reference facial features in this security system.
-              </span>
-            </label>
-          </div>
-
-          {/* Status feedback */}
-          {errorMsg && (
-            <div className="p-3 rounded-lg bg-state-critical/15 border border-state-critical/40 text-xs text-state-critical flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
-
-          {successMsg && (
-            <div className="p-3 rounded-lg bg-state-success/15 border border-state-success/40 text-xs text-state-success flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>{successMsg}</span>
-            </div>
-          )}
-
-          <div className="pt-2 flex justify-end">
-            <Button
-              type="submit"
-              variant="cyan"
-              size="sm"
-              isLoading={isProcessing}
-              icon={<UserCheck className="w-4 h-4" />}
-            >
-              Validate & Enroll Profile
-            </Button>
-          </div>
-        </form>
-
-        {/* Enrolled Profiles List */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-bold text-text-primary text-sm flex items-center gap-2">
-              <span>Enrolled Authorized Identities ({profiles.length})</span>
-            </h4>
-            {profiles.length > 0 && (
-              <button
-                onClick={handleClearAll}
-                className="text-xs font-mono text-state-critical hover:underline"
-              >
-                Clear All Profiles
-              </button>
-            )}
-          </div>
-
-          {profiles.length === 0 ? (
-            <div className="p-6 rounded-xl bg-bg-card border border-border text-center text-xs text-text-muted space-y-1">
-              <p>No reference profiles enrolled yet.</p>
-              <p>Unknown individuals at the entrance will be labeled as "UNKNOWN INDIVIDUAL".</p>
-            </div>
-          ) : (
-            <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
-              {profiles.map((p) => (
-                <div
-                  key={p.id}
-                  className="p-3 rounded-xl bg-bg-card border border-border hover:border-border-bright flex items-center justify-between gap-3 text-xs"
-                >
-                  <div className="flex items-center gap-3">
-                    {p.photoPreviewUrl ? (
-                      <img
-                        src={p.photoPreviewUrl}
-                        alt={p.name}
-                        className="w-10 h-10 rounded-full object-cover border border-cyan/40 shrink-0"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-cyan/10 border border-cyan/30 text-cyan flex items-center justify-center font-bold">
-                        {p.name.charAt(0)}
-                      </div>
-                    )}
-                    <div>
-                      <strong className="text-text-primary block font-semibold text-sm">
-                        {p.name}
-                      </strong>
-                      <div className="flex items-center gap-2 text-text-muted font-mono text-[11px] mt-0.5">
-                        <span className="text-cyan">{p.role}</span>
-                        <span>•</span>
-                        <span>128-d Vector</span>
-                        <span>•</span>
-                        <span>{new Date(p.enrolledAt).toLocaleDateString()}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleDeleteProfile(p.id, p.name)}
-                    className="p-1.5 rounded-lg text-text-muted hover:text-state-critical hover:bg-bg-elevated transition-colors"
-                    title="Delete profile"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-      </div>
-    </Modal>
-  );
+          <label className="flex items-start gap-3 text-xs leading-5 cursor-pointer"><input type="checkbox" className="mt-1 h-4 w-4 shrink-0" checked={consent} onChange={e => setConsent(e.target.checked)} required /><span>This person agrees to save their photo for face recognition.</span></label>
+          <button type="submit" disabled={isProcessing || !name.trim() || !photoPreview || !consent} className="fg-button w-full"><UserPlus size={18} />{isProcessing ? 'Adding member…' : 'Add member'}</button>
+        </fieldset>
+        {errorMsg && <p role="alert" className="rounded-xl bg-red-50 text-red-700 p-3 text-sm">{errorMsg}</p>}
+        {successMsg && <p role="status" className="fg-notice flex items-center gap-2"><CheckCircle2 size={18} />{successMsg}</p>}
+      </form>
+      <section><div className="fg-section-title mb-3"><h4 className="font-bold">Your household</h4><span className="fg-pill">{profiles.length} {profiles.length === 1 ? 'member' : 'members'}</span></div>
+        {!profiles.length ? <div className="fg-member-empty"><UserPlus size={28} /><p>No members yet</p><span>Add your first household member above.</span></div> : <div className="space-y-2">{profiles.map(member => <article key={member.id} className="fg-member-row"><div className="flex items-center gap-3 min-w-0">{member.photoPreviewUrl ? <img src={member.photoPreviewUrl} alt="" loading="lazy" /> : <span className="fg-member-initial">{member.name.charAt(0)}</span>}<div className="min-w-0"><h5 className="font-bold text-sm break-words">{member.name}</h5><p className="text-xs text-fg-muted">Household member</p></div></div><button type="button" disabled={isProcessing} onClick={() => handleDeleteProfile(member.id, member.name)} aria-label={`Remove ${member.name}`} className="fg-member-remove"><Trash2 size={17} /></button></article>)}</div>}
+      </section>
+    </div>
+  </Modal>;
 };

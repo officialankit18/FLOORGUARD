@@ -43,9 +43,12 @@ export function removeCachedEvent(id?: string) {
   });
 }
 subscribeLive(message => {
+  if (message.type === 'PROFILES_CHANGED') void profilesQuery.load(true);
   if (message.type === 'NEW_SECURITY_EVENT') upsertEvent(message.data);
+  if (message.type === 'SECURITY_EVENT_UPDATED') upsertEvent(message.data, false);
   if (message.type === 'DEVICE_TELEMETRY_UPDATE') devicesQuery.update(current => ({ success: true, data: [message.data, ...(current?.data.filter(device => device.deviceId !== message.data.deviceId) || [])] }));
   if (message.type === 'CONNECTION_ESTABLISHED') {
+    if (profilesQuery.getSnapshot().data) void profilesQuery.load(true);
     void devicesQuery.load(receivedHandshake);
     for (const { resource } of eventQueries.values()) void resource.load(receivedHandshake);
     receivedHandshake = true;

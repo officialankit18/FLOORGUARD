@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { store } from '../database/store';
 import { broadcastEvent, broadcastDeviceUpdate } from '../services/websocketService';
-import { SecurityEvent } from '../../src/types/events';
+import { SecurityEvent } from '../../../src/types/events';
 
 export const getDevices = (_req: Request, res: Response) => {
   const devices = store.getDevices();

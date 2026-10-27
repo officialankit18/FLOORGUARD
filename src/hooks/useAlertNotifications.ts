@@ -5,13 +5,9 @@ import { subscribeLive } from '../services/liveConnection';
 
 export function useAlertNotifications() {
   useEffect(() => {
-    const enableOnInteraction = () => {
-      if ('Notification' in window && Notification.permission === 'default') void NotificationService.enable();
-    };
-    window.addEventListener('pointerdown', enableOnInteraction, { once: true });
     const unsubscribe = subscribeLive(message => {
       if (message.type === 'NEW_SECURITY_EVENT') void NotificationService.notify(message.data as SecurityEvent);
     });
-    return () => { window.removeEventListener('pointerdown', enableOnInteraction); unsubscribe(); };
+    return unsubscribe;
   }, []);
 }

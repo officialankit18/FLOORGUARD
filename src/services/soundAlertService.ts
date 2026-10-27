@@ -1,6 +1,16 @@
 export class SoundAlertService {
   private static audioCtx: AudioContext | null = null;
   private static isSoundEnabled = false;
+  private static alarmTimer: ReturnType<typeof setInterval> | null = null;
+  public static startContinuousAlarm() {
+    if (this.alarmTimer) return;
+    this.playIntrusionAlarm();
+    this.alarmTimer = setInterval(() => this.playIntrusionAlarm(), 1100);
+  }
+  public static stopContinuousAlarm() {
+    if (this.alarmTimer) clearInterval(this.alarmTimer);
+    this.alarmTimer = null;
+  }
 
   public static setSoundEnabled(enabled: boolean) {
     this.isSoundEnabled = enabled;

@@ -1,6 +1,11 @@
 import { useEffect, useSyncExternalStore } from 'react';
 
 export interface FloorGuardSettings {
+  theme?: 'light' | 'dark';
+  emergencyNumber?: string;
+  floorCameraIp?: string;
+  autoOpenDoor?: boolean;
+  doorOpenValue?: 'unconfigured' | 'on' | 'off';
   espCameraIp: string;
   mqttUrl: string;
   mqttUsername: string;
@@ -18,7 +23,7 @@ let loaded = false;
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 const getSnapshot = () => settings;
-function save(next: FloorGuardSettings) {
+export function saveSettings(next: FloorGuardSettings) {
   settings = next;
   try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* Private/storage-full browsers still work in memory. */ }
   listeners.forEach(listener => listener());
@@ -28,7 +33,7 @@ function loadRuntime() {
   pending = fetch('/api/runtime-config').then(async response => {
     if (!response.ok) throw new Error('Configuration unavailable');
     const runtime: Partial<FloorGuardSettings> = await response.json();
-    save({ ...settings,
+    saveSettings({ ...settings,
       mqttUrl: settings.mqttUrl || runtime.mqttUrl || '',
       mqttUsername: settings.mqttUsername || runtime.mqttUsername || '',
       mqttPassword: settings.mqttPassword || runtime.mqttPassword || '',
@@ -43,5 +48,6 @@ window.addEventListener('storage', event => {
 export function useFloorGuardSettings() {
   const current = useSyncExternalStore(subscribe, getSnapshot);
   useEffect(loadRuntime, []);
-  return { settings: current, save };
+  return { settings: current, save: saveSettings };
 }
+export const getSettings = getSnapshot;

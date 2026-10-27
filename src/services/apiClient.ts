@@ -76,6 +76,8 @@ export class ApiClient {
     query.set('limit', String(limit));
 
     if (criteria?.eventType) query.set('eventType', criteria.eventType);
+    if (criteria?.from) query.set('from', criteria.from);
+    if (criteria?.to) query.set('to', criteria.to);
     if (criteria?.severity) query.set('severity', criteria.severity);
     if (criteria?.mode) query.set('mode', criteria.mode);
     if (criteria?.search) query.set('search', criteria.search);
@@ -88,7 +90,7 @@ export class ApiClient {
 
   public static async createEvent(
     payload: Partial<SecurityEvent>
-  ): Promise<{ success: boolean; data: SecurityEvent }> {
+  ): Promise<{ success: boolean; data: SecurityEvent; deduplicated?: boolean }> {
     return this.request('/events', {
       method: 'POST',
       body: JSON.stringify(payload),

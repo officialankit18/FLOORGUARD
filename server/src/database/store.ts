@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { SecurityEvent } from '../../src/types/events';
-import { EnrolledProfile } from '../../src/types/profiles';
-import { DeviceTelemetry } from '../../src/types/device';
+import { SecurityEvent } from '../../../src/types/events';
+import { EnrolledProfile } from '../../../src/types/profiles';
+import { DeviceTelemetry } from '../../../src/types/device';
 import { clearCollection, removeEvent, removeProfile, saveDevice, saveEvent, saveProfile } from '../services/mongoPersistence';
 
 interface DatabaseSchema {
@@ -140,11 +140,7 @@ class Store {
   }
 
   public addEvent(event: SecurityEvent): SecurityEvent {
-    // Keep max 500 events to prevent unbounded growth
     this.data.events.unshift(event);
-    if (this.data.events.length > 500) {
-      this.data.events = this.data.events.slice(0, 500);
-    }
     this.save(this.data);
     void saveEvent(event).catch((error) => console.warn('[Firebase] Event sync failed:', error.message));
     return event;
@@ -234,6 +230,15 @@ class Store {
     event.metadata = { ...event.metadata, snapshotUrl: `/api/events/${id}/snapshot`, snapshotStoragePath };
     this.save(this.data);
     void saveEvent(event).catch((error) => console.warn('[Firebase] Snapshot sync failed:', error.message));
+    return event;
+  }
+
+  public updateEventImage(id: string, snapshotUrl: string): SecurityEvent | undefined {
+    const event = this.getEvent(id);
+    if (!event) return undefined;
+    event.metadata = { ...event.metadata, snapshotUrl };
+    this.save(this.data);
+    void saveEvent(event).catch(error => console.warn('[MongoDB] Snapshot sync failed:', error.message));
     return event;
   }
 }

@@ -1,38 +1,50 @@
-import React, { useMemo, useState } from 'react';
-import { CheckCircle2, CircleAlert, Clock3, DoorOpen, ImageOff, ShieldAlert, UsersRound } from 'lucide-react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import { Link } from 'react-router-dom';
+import { ShieldCheck, DoorClosed, DoorOpen, Check, ArrowUpRight, Clock, Camera, Users, Bell } from 'lucide-react';
 import { useDeviceStatus } from '../hooks/useDeviceStatus';
-import { useEventLog } from '../hooks/useEventLog';
-import { useFloorGuardSettings } from '../hooks/useFloorGuardSettings';
 import { useMqttConnection } from '../hooks/useMqttConnection';
+import { historyQuery, isIntrusion } from '../services/securityWorkflow';
+import { ApiClient } from '../services/apiClient';
 
 export const DashboardPage: React.FC = () => {
-  const { device, isLoading: deviceLoading } = useDeviceStatus();
-  const { events, acknowledge, isLoading, isRefreshing, error, refetch } = useEventLog();
-  const { settings } = useFloorGuardSettings();
-  const { openDoor } = useMqttConnection(settings);
-  const [doorNotice, setDoorNotice] = useState('');
-  const today = new Date().toDateString();
-  const todaysFaces = useMemo(() => events.filter((event) => ['Known Face Match', 'Unknown Face'].includes(event.eventType) && new Date(event.timestamp).toDateString() === today), [events, today]);
-  const intrusions = useMemo(() => events.filter((event) => event.eventType === 'Unknown Face' || event.eventType === 'Potential Intrusion'), [events]);
-  const visitor = useMemo(() => events.find((event) => event.eventType === 'Unknown Face' && !event.acknowledged) || events.find((event) => event.eventType === 'Unknown Face'), [events]);
-  const liveAlert = device.isTriggered || device.buzzerState;
-  const grantEntry = () => { if (openDoor()) { setDoorNotice('Door-open command sent to the controller.'); if (visitor) void acknowledge(visitor.id, 'Home owner').catch(() => setDoorNotice('Door command sent. Could not save the visitor acknowledgement.')); } else setDoorNotice('Add MQTT details in Settings before sending door commands.'); };
-
-  return <main className={`mx-auto max-w-xl space-y-5 px-5 py-6 ${liveAlert ? 'fg-alert-mode' : ''}`}>
-    {error && <p role="status" className="rounded-2xl bg-amber-50 p-3 text-sm text-amber-800">{events.length ? 'Showing saved data. Reconnecting…' : 'History is temporarily unavailable.'} <button className="font-bold underline" onClick={() => void refetch()}>Retry</button></p>}
-    <span className="sr-only" role="status">{isLoading ? 'Loading history' : isRefreshing ? 'Updating history' : 'History up to date'}</span>
-    <section className="rounded-[2rem] bg-fg-ink p-6 text-white shadow-fg-card">
-      <p className="text-xs font-black uppercase tracking-[0.24em] text-fg-yellow">Home status</p>
-      <div className="mt-3 flex items-end justify-between gap-4"><div><h1 className="text-3xl font-black leading-tight">Good to see you.</h1><p className="mt-2 text-sm text-white/65">{liveAlert ? 'Floor sensor needs your attention.' : 'No active floor-sensor intrusion.'}</p></div><span className={`mb-1 h-3 w-3 rounded-full ${liveAlert ? 'animate-pulse bg-red-500' : 'bg-emerald-400'}`} /></div>
-    </section>
-
-    <section className="grid grid-cols-2 gap-3">
-      <div className="rounded-3xl border border-fg-line bg-white p-5 shadow-fg-card"><UsersRound className="h-5 w-5 text-fg-amber" /><p className="mt-5 text-3xl font-black">{isLoading ? '—' : todaysFaces.length}</p><p className="mt-1 text-xs font-bold text-fg-muted">people checked today</p></div>
-      <div className="rounded-3xl border border-fg-line bg-white p-5 shadow-fg-card"><ShieldAlert className={`h-5 w-5 ${intrusions.length ? 'text-red-500' : 'text-emerald-500'}`} /><p className="mt-5 text-3xl font-black">{isLoading ? '—' : intrusions.length}</p><p className="mt-1 text-xs font-bold text-fg-muted">unverified visitor{intrusions.length === 1 ? '' : 's'}</p></div>
-    </section>
-
-    {isLoading ? <section aria-label="Loading visitor history" className="h-44 animate-pulse rounded-3xl border border-fg-line bg-fg-yellowSoft" /> : visitor ? <section className="overflow-hidden rounded-3xl border border-red-200 bg-white shadow-fg-card"><div className="flex items-center gap-2 bg-red-50 px-5 py-3 text-sm font-black text-red-700"><CircleAlert className="h-5 w-5" />Visitor waiting for your review</div><div className="p-5"><div className="flex gap-4">{visitor.metadata?.snapshotUrl ? <img src={visitor.metadata.snapshotUrl} alt="Unverified visitor snapshot" className="h-24 w-24 rounded-2xl object-cover" /> : <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-fg-yellowSoft text-fg-amber"><ImageOff className="h-7 w-7" /></div>}<div className="min-w-0"><h2 className="text-lg font-black">Unverified visitor</h2><p className="mt-1 flex items-center gap-1 text-sm text-fg-muted"><Clock3 className="h-3.5 w-3.5" />{new Date(visitor.timestamp).toLocaleString()}</p><p className="mt-2 text-xs leading-5 text-fg-muted">This person is not in your household member list.</p></div></div><button onClick={grantEntry} className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-fg-yellow px-4 py-3.5 text-sm font-black text-fg-ink"><DoorOpen className="h-5 w-5" />Open the door</button>{doorNotice && <p className="mt-3 text-center text-xs font-bold text-fg-amber">{doorNotice}</p>}</div></section> : <section className="rounded-3xl border border-fg-line bg-white p-6 text-center shadow-fg-card"><CheckCircle2 className="mx-auto h-10 w-10 text-emerald-500" /><h2 className="mt-3 text-lg font-black">No unverified visitor right now</h2><p className="mt-2 text-sm text-fg-muted">When the camera finds an unknown person, their photo and arrival time will appear here automatically.</p></section>}
-
-    <section className="rounded-3xl border border-fg-line bg-white p-5 shadow-fg-card"><div className="flex items-center justify-between"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-fg-muted">Door & floor mat</p><h2 className="mt-1 text-xl font-black">{deviceLoading ? 'Connecting…' : liveAlert ? 'Intrusion alert active' : 'All clear'}</h2></div><span className={`rounded-full px-3 py-1.5 text-xs font-black ${liveAlert ? 'bg-red-100 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{deviceLoading ? 'CONNECTING' : liveAlert ? 'ALERT' : 'MONITORING'}</span></div><p className="mt-3 text-sm text-fg-muted">{liveAlert ? 'Piezo sensor triggered. The physical buzzer and red alarm state are active.' : 'Piezo sensor is monitoring the entrance mat.'}</p></section>
+  const { device, wsConnected } = useDeviceStatus();
+  const snapshot = useSyncExternalStore(historyQuery.subscribe, historyQuery.getSnapshot);
+  const { openDoor, closeDoor, commandStatus } = useMqttConnection();
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState('');
+  useEffect(() => { void historyQuery.load(); }, []);
+  const events = snapshot.data || [];
+  const today = events.filter(event => new Date(event.timestamp).toDateString() === new Date().toDateString());
+  const waiting = events.filter(event => event.eventType === 'Unknown Face' && !event.acknowledged);
+  const alert = device.isTriggered || device.buzzerState;
+  const attend = async (id: string) => {
+    setBusy(id);
+    try {
+      const result = await ApiClient.acknowledgeEvent(id, 'Home owner');
+      historyQuery.update(current => current?.map(event => event.id === id ? result.data : event));
+      await ApiClient.createEvent({ eventType: 'Visitor Attended', source: 'User Action', description: 'Visitor attended by the home owner.', severity: 'info', mode: 'LIVE_CONNECTED', metadata: { relatedEventId: id } });
+    } catch { setNotice('Could not save attendance. Please retry.'); } finally { setBusy(''); }
+  };
+  const unlock = async (id?: string) => {
+    if (!openDoor()) { setNotice('Configure the door-opening signal in Settings and connect MQTT first.'); return; }
+    setNotice('Door-open request sent. Waiting for the device to confirm.');
+    await ApiClient.createEvent({ eventType: 'Door Open Requested', source: 'User Action', description: 'Owner requested door opening.', severity: 'info', mode: 'LIVE_CONNECTED', metadata: { relatedEventId: id } }).catch(() => setNotice('Door request sent, but history could not be saved.'));
+  };
+  const close = async () => {
+    if (!closeDoor()) { setNotice('Unable to send: check MQTT, door signal settings, or wait for the pending command.'); return; }
+    setNotice('Door-close request sent. Waiting for device confirmation.');
+    await ApiClient.createEvent({ eventType: 'Door Close Requested', source: 'User Action', description: 'Owner requested door closing.', severity: 'info', mode: 'LIVE_CONNECTED' }).catch(() => setNotice('Close request sent, but history could not be saved.'));
+  };
+  return <main className="fg-page">
+    <section className={`fg-home-status ${alert ? 'alert' : ''}`}><span>HOME STATUS</span><h1>{alert ? 'Your home needs attention.' : 'Good to see you.'}</h1><div><p>{alert ? 'Active floor-sensor intrusion.' : wsConnected ? 'No active floor-sensor intrusion reported.' : 'Connecting to your home…'}</p><i className={alert ? 'danger' : wsConnected ? 'online' : ''} aria-label={alert ? 'Alert active' : wsConnected ? 'Live updates connected' : 'Connecting'} /></div></section>
+    <div className="fg-home-stats"><section className="fg-card"><Users size={23} /><b>{snapshot.isLoading ? '—' : today.filter(e => ['Known Face Match', 'Unknown Face'].includes(e.eventType)).length}</b><span>people checked today</span></section><section className="fg-card"><ShieldCheck size={23} /><b>{snapshot.isLoading ? '—' : today.filter(e => e.eventType === 'Unknown Face').length}</b><span>unverified visitors today</span></section></div>
+    {notice && <p className="fg-notice" role="status">{notice}</p>}
+    {commandStatus !== 'No pending door request' && <p className="fg-notice" role="status">{commandStatus}</p>}
+    {waiting.slice(0, 5).map(visitor => <article key={visitor.id} className="fg-card fg-visitor-review"><header><Bell size={19} />Visitor waiting for your review</header><div className="fg-visitor-content"><div className="flex gap-4">{visitor.metadata?.snapshotUrl ? <img src={visitor.metadata.snapshotUrl} alt="Visitor at the entrance" className="fg-visitor-photo" /> : <div className="fg-visitor-photo flex items-center justify-center"><Camera /></div>}<div className="min-w-0"><h3>Unverified visitor</h3><time><Clock size={14} />{new Date(visitor.timestamp).toLocaleString()}</time><p>This person is not in your household member list.</p></div></div><button className="fg-button w-full mt-5" onClick={() => void unlock(visitor.id)}><DoorOpen size={19} />Open the door</button><button className="fg-button secondary w-full mt-2" disabled={busy === visitor.id} onClick={() => void attend(visitor.id)}><Check size={17} />{busy === visitor.id ? 'Saving…' : 'Mark attended'}</button></div></article>)}
+    {!waiting.length && <section className="fg-card fg-empty"><ShieldCheck size={30} /><h3>{snapshot.isLoading ? 'Checking visitor history…' : 'All visitors attended'}</h3><p>New visitor photos and arrival times will appear here.</p></section>}
+    {snapshot.error && <p className="fg-notice">History is unavailable. <button onClick={() => void historyQuery.load(true)}>Retry</button></p>}
+    <section className="fg-card fg-mat-block"><div className="fg-section-title"><div><span className="fg-eyebrow">Door &amp; floor mat</span><h2>{alert ? 'Intrusion detected' : wsConnected && device.status === 'Connected' ? 'All clear' : 'Waiting for device'}</h2></div><span className="fg-pill">{alert ? 'ALERT' : wsConnected && device.status === 'Connected' ? 'MONITORING' : 'CONNECTING'}</span></div><p>{alert ? 'Your floor sensor has reported activity. Review the alert.' : wsConnected && device.status === 'Connected' ? 'Piezo sensor is monitoring the entrance mat.' : 'Device status will appear when connected.'}</p><div className="fg-home-stats mt-4"><div><b>{today.filter(e => e.eventType === 'Known Face Match').length}</b><span>verified visits today</span></div><div><b>{today.filter(isIntrusion).length}</b><span>floor alerts today</span></div></div></section>
+    <section className="fg-card"><div className="fg-section-title"><h2>Door control</h2><span className="fg-pill">{device.status}</span></div><p className="fg-muted">Reported device signal: {device.servoLocked ? 'ON' : 'OFF'}. Commands are confirmed by your controller.</p><div className="flex flex-wrap gap-3 mt-4"><button className="fg-button" onClick={() => void unlock()}><DoorOpen size={18} />Open door</button><button className="fg-button secondary" onClick={() => void close()}><DoorClosed size={18} />Close door</button></div></section>
+    <section className="fg-card"><h2>Recent activity</h2>{events.slice(0, 4).map(event => <div className="fg-timeline-item" key={event.id}><div className={`fg-timeline-dot ${isIntrusion(event) ? 'danger' : ''}`} /><div><h3>{event.metadata?.recognizedName || event.eventType}</h3><p>{event.description}</p><time>{new Date(event.timestamp).toLocaleString()}</time></div></div>)}<Link className="fg-text-link" to="/history">Explore all activity <ArrowUpRight size={16} /></Link></section>
   </main>;
 };

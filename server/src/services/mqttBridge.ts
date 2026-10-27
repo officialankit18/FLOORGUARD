@@ -1,7 +1,7 @@
 import mqtt, { MqttClient } from 'mqtt';
 import { store } from '../database/store';
 import { broadcastDeviceUpdate, broadcastEvent } from './websocketService';
-import { SecurityEvent } from '../../src/types/events';
+import { SecurityEvent } from '../../../src/types/events';
 
 let client: MqttClient | null = null;
 let currentPrefix = '';

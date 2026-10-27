@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { store } from '../database/store';
-import { EnrolledProfile } from '../../src/types/profiles';
+import { EnrolledProfile } from '../../../src/types/profiles';
+import { broadcastProfilesChanged } from '../services/websocketService';
 
 export const getProfiles = (_req: Request, res: Response) => {
   const profiles = store.getProfiles();
@@ -43,6 +44,7 @@ export const enrollProfile = (req: Request, res: Response) => {
   };
 
   store.addProfile(newProfile);
+  broadcastProfilesChanged();
 
   return res.status(201).json({
     success: true,
@@ -58,10 +60,12 @@ export const deleteProfile = (req: Request, res: Response) => {
   if (!deleted) {
     return res.status(404).json({ success: false, error: 'Profile not found' });
   }
+  broadcastProfilesChanged();
   return res.json({ success: true, message: 'Profile deleted successfully.' });
 };
 
 export const clearAllProfiles = (_req: Request, res: Response) => {
   store.clearProfiles();
+  broadcastProfilesChanged();
   return res.json({ success: true, message: 'All enrolled reference profiles cleared.' });
 };

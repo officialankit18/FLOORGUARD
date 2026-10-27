@@ -4,6 +4,7 @@ import { useFloorGuardSettings } from '../hooks/useFloorGuardSettings';
 import { useMqttConnection } from '../hooks/useMqttConnection';
 import { CameraService } from '../services/cameraService';
 import { healthQuery } from '../services/dashboardData';
+import { NotificationService } from '../services/notificationService';
 
 const statusStyle = (ok: boolean) => ok ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700';
 
@@ -15,6 +16,7 @@ export const SettingsPage: React.FC = () => {
   const siteOnline = health.data?.status === 'ONLINE';
   const mongoStatus = health.data?.mongo || (health.error ? 'Offline' : 'Checking');
   const [saved, setSaved] = useState(false);
+  const [notificationStatus, setNotificationStatus] = useState('');
   const { webStatus, deviceStatus } = useMqttConnection(settings);
 
   useEffect(() => { CameraService.isCameraSupported().then(setLaptopAvailable); void healthQuery.load(); }, []);
@@ -34,6 +36,8 @@ export const SettingsPage: React.FC = () => {
       <StatusRow icon={<Radio className="h-5 w-5" />} label="Door device → MQTT broker" value={deviceStatus} ok={deviceStatus === 'Connected'} />
     </div></section>
     <form onSubmit={submit} className="space-y-5">
+      <section className="fg-card space-y-3"><h2>Notifications</h2><p className="fg-muted">Visitor notifications are silent. Floor alerts ring while this app is active. Background notifications use your phone's notification settings.</p><button type="button" className="fg-button" onClick={() => void NotificationService.enablePush().then(setNotificationStatus).catch(error => setNotificationStatus(error.message))}>Enable on this device</button><p role="status">{notificationStatus || `Background push: ${health.data?.push || 'Checking'}`}</p></section>
+      <section className="fg-card space-y-4"><h2>Appearance & safety</h2><label className="block">Appearance<select value={draft.theme || 'light'} onChange={e => update('theme', e.target.value)}><option value="light">Light · White & yellow</option><option value="dark">Dark · Night watch</option></select></label><Field label="Emergency telephone number" type="tel" value={draft.emergencyNumber || ''} onChange={v => update('emergencyNumber', v)} placeholder="Include country code" /><Field label="Floor-area ESP32 camera IP" value={draft.floorCameraIp || ''} onChange={v => update('floorCameraIp', v.trim())} placeholder="Separate camera overlooking the mat" /><label className="block">Door-opening signal<select value={draft.doorOpenValue || 'unconfigured'} onChange={e => update('doorOpenValue', e.target.value)}><option value="unconfigured">Select your controller's opening signal</option><option value="on">ON opens the door</option><option value="off">OFF opens the door</option></select></label><p className="fg-muted">Choose the signal that physically opens your lock. A reported signal is not proof that the door moved.</p><label className="flex items-center gap-3"><input type="checkbox" checked={!!draft.autoOpenDoor} onChange={e => setDraft(previous => ({ ...previous, autoOpenDoor: e.target.checked }))} />Automatically open for verified members</label><p className="fg-muted">Recognition runs on the active monitoring browser. Keep it open and awake. Photo matching does not provide liveness detection.</p></section>
       <section className="rounded-3xl border border-fg-line bg-white p-5 shadow-fg-card"><h2 className="text-lg font-black">Camera 1 · ESP32-CAM</h2><p className="mt-1 text-sm text-fg-muted">Enter only the local IP address shown by the ESP32-CAM, for example 10.251.4.193.</p><label className="mt-4 block text-xs font-black uppercase tracking-[0.16em] text-fg-muted">ESP32-CAM local IP<input value={draft.espCameraIp} onChange={(event) => update('espCameraIp', event.target.value.trim())} inputMode="decimal" placeholder="10.251.4.193" className="mt-2 w-full rounded-2xl border border-fg-line bg-fg-surface px-4 py-3 text-base font-semibold outline-none focus:border-fg-yellow" /></label></section>
       <section className="rounded-3xl border border-fg-line bg-white p-5 shadow-fg-card"><h2 className="text-lg font-black">MQTT connection</h2><p className="mt-1 text-sm text-fg-muted">Use a restricted dashboard account. The web and ESP device can use separate credentials.</p><div className="mt-4 space-y-3">
         <Field label="WebSocket broker URL" value={draft.mqttUrl} onChange={(value) => update('mqttUrl', value)} placeholder="wss://broker.example.com/mqtt" />

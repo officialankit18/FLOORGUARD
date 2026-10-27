@@ -1,6 +1,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import { SecurityEvent } from '../../src/types/events';
-import { DeviceTelemetry } from '../../src/types/device';
+import { SecurityEvent } from '../../../src/types/events';
+import { DeviceTelemetry } from '../../../src/types/device';
+import { pushSecurityEvent } from './pushService';
+import { captureFloorIncident } from './floorCapture';
 
 let wss: WebSocketServer | null = null;
 
@@ -29,6 +31,8 @@ export function initWebSocketServer(server: WebSocketServer) {
 }
 
 export function broadcastEvent(event: SecurityEvent) {
+  void pushSecurityEvent(event).catch(() => console.warn('[Push] Notification dispatch failed'));
+  void captureFloorIncident(event).then(updated => { if (updated) broadcastEventUpdate({ ...updated, metadata: { ...updated.metadata, snapshotUrl: `/api/events/${updated.id}/snapshot` } }); }).catch(() => console.warn('[Camera] Floor snapshot unavailable'));
   if (!wss) return;
   const payload = JSON.stringify({
     type: 'NEW_SECURITY_EVENT',
@@ -54,4 +58,13 @@ export function broadcastDeviceUpdate(device: DeviceTelemetry) {
       client.send(payload);
     }
   });
+}
+
+export function broadcastEventUpdate(event: SecurityEvent) {
+  const payload = JSON.stringify({ type: 'SECURITY_EVENT_UPDATED', data: event });
+  wss?.clients.forEach(client => { if (client.readyState === WebSocket.OPEN) client.send(payload); });
+}
+
+export function broadcastProfilesChanged() {
+  wss?.clients.forEach(client => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({ type: 'PROFILES_CHANGED' })); });
 }

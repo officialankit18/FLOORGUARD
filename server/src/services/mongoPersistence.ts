@@ -1,7 +1,7 @@
 import { MongoClient, Db } from 'mongodb';
-import { DeviceTelemetry } from '../../src/types/device';
-import { SecurityEvent } from '../../src/types/events';
-import { EnrolledProfile } from '../../src/types/profiles';
+import { DeviceTelemetry } from '../../../src/types/device';
+import { SecurityEvent } from '../../../src/types/events';
+import { EnrolledProfile } from '../../../src/types/profiles';
 
 let client: MongoClient | null = null;
 let db: Db | null = null;
@@ -33,8 +33,12 @@ async function connect() {
       }
     })();
   }
-  return connecting;
+  const result = await connecting;
+  if (!result) connecting = null;
+  return result;
 }
+
+export async function mongoDatabase() { return await connect() ? db : null; }
 
 export function isMongoEnabled() { return Boolean(process.env.MONGODB_URI); }
 
@@ -91,4 +95,5 @@ export async function closeMongo() {
   await client?.close();
   client = null;
   db = null;
+  connecting = null;
 }
