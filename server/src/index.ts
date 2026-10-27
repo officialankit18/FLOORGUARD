@@ -124,7 +124,15 @@ app.delete('/api/profiles', clearAllProfiles);
 // Serve static build if in production
 if (process.env.NODE_ENV === 'production') {
   const distPath = path.resolve(process.cwd(), 'dist');
-  app.use(express.static(distPath));
+  app.use(express.static(distPath, {
+    setHeaders(res, filePath) {
+      if (/[/\\]assets[/\\]/.test(filePath) || /[/\\]icons[/\\].*-v2\.png$/.test(filePath)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      } else {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    },
+  }));
   app.get('*', (_req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
   });

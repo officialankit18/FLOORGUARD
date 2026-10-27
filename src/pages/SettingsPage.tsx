@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { CheckCircle2, Laptop, Radio, Save, Server, Video, Database } from 'lucide-react';
 import { useFloorGuardSettings } from '../hooks/useFloorGuardSettings';
 import { useMqttConnection } from '../hooks/useMqttConnection';
 import { CameraService } from '../services/cameraService';
-import { ApiClient } from '../services/apiClient';
+import { healthQuery } from '../services/dashboardData';
 
 const statusStyle = (ok: boolean) => ok ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700';
 
@@ -11,12 +11,13 @@ export const SettingsPage: React.FC = () => {
   const { settings, save } = useFloorGuardSettings();
   const [draft, setDraft] = useState(settings);
   const [laptopAvailable, setLaptopAvailable] = useState(false);
-  const [siteOnline, setSiteOnline] = useState(false);
-  const [mongoStatus, setMongoStatus] = useState('Checking');
+  const health = useSyncExternalStore(healthQuery.subscribe, healthQuery.getSnapshot);
+  const siteOnline = health.data?.status === 'ONLINE';
+  const mongoStatus = health.data?.mongo || (health.error ? 'Offline' : 'Checking');
   const [saved, setSaved] = useState(false);
   const { webStatus, deviceStatus } = useMqttConnection(settings);
 
-  useEffect(() => { CameraService.isCameraSupported().then(setLaptopAvailable); ApiClient.getHealth().then((health) => { setSiteOnline(true); setMongoStatus(health.mongo || 'Unknown'); }).catch(() => { setSiteOnline(false); setMongoStatus('Offline'); }); }, []);
+  useEffect(() => { CameraService.isCameraSupported().then(setLaptopAvailable); void healthQuery.load(); }, []);
   useEffect(() => { setDraft(settings); }, [settings]);
   const update = (key: keyof typeof draft, value: string) => setDraft(prev => ({ ...prev, [key]: value }));
   const submit = (event: React.FormEvent) => { event.preventDefault(); save(draft); setSaved(true); window.setTimeout(() => setSaved(false), 2500); };

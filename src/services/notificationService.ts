@@ -24,9 +24,9 @@ export class NotificationService {
     const body = `${event.description} • ${new Date(event.timestamp).toLocaleTimeString()}`;
     const registration = await navigator.serviceWorker?.ready.catch(() => null);
     if (registration) {
-      await registration.showNotification(title, { body, icon: '/favicon.png', badge: '/favicon.png', tag: event.id });
+      await registration.showNotification(title, { body, icon: '/icons/icon-192-v2.png', tag: event.id });
     } else {
-      new Notification(title, { body, icon: '/favicon.png', tag: event.id });
+      new Notification(title, { body, icon: '/icons/icon-192-v2.png', tag: event.id });
     }
   }
 }

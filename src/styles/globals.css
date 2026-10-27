@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+.fg-brand-header { grid-template-columns: 76px minmax(0, 1fr) 76px; gap: 8px; }
+.fg-brand-emblem { width: 72px; height: 78px; }
+.fg-brand-wordmark { aspect-ratio: 6.9 / 1; }
+@media (max-width: 480px) {
+  .fg-brand-header { grid-template-columns: 60px minmax(0, 1fr); gap: 12px; padding-inline: 12px; }
+  .fg-brand-emblem { width: 60px; height: 66px; }
+  .fg-brand-spacer { display: none; }
+}
+
 @layer base {
   :root {
     --bg-primary: #FFFDF8;

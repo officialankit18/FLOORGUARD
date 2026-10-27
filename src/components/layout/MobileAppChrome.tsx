@@ -13,19 +13,19 @@ export const MobileAppChrome: React.FC<{ children: React.ReactNode }> = ({ child
   return (
     <div className="min-h-screen bg-fg-surface text-fg-ink pb-24">
       <header className="sticky top-0 z-40 border-b border-fg-line bg-white/95 backdrop-blur-md">
-        <div className="mx-auto grid max-w-xl grid-cols-[76px_1fr_76px] items-center px-4 py-1">
+        <div className="fg-brand-header mx-auto grid max-w-xl items-center px-4 py-3">
           <Link to="/" className="flex items-center" aria-label="FLOOR GUARD home">
-            <span className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border border-fg-yellow bg-white shadow-sm">
-              <img src="/branding/floorguard-logo.png" alt="FLOOR GUARD logo" className="h-full w-full object-contain" />
+            <span className="fg-brand-emblem flex items-center justify-center rounded-xl border border-fg-line bg-white p-1 shadow-sm">
+              <img src="/icons/emblem-v2.png" width="256" height="256" alt="FLOOR GUARD logo" className="h-full w-full object-contain" />
             </span>
             <span className="sr-only">FLOOR GUARD</span>
           </Link>
           <img
-            src="/branding/floorguard-wordmark.png"
+            src="/branding/floorguard-wordmark.svg"
             alt="FLOORGUARD — Smart Anti-Theft Floor Mat"
-            className="justify-self-center h-24 w-auto max-w-full object-contain"
+            className="fg-brand-wordmark block w-full min-w-0 justify-self-center object-contain"
           />
-          <span />
+          <span className="fg-brand-spacer" aria-hidden="true" />
         </div>
       </header>
       {children}

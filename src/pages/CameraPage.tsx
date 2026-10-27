@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { CameraOff, CheckCircle2, RefreshCw, UserPlus, UsersRound } from 'lucide-react';
 import { useCamera } from '../hooks/useCamera';
 import { useFloorGuardSettings } from '../hooks/useFloorGuardSettings';
@@ -6,12 +6,15 @@ import { ApiClient } from '../services/apiClient';
 import { FaceRecognitionService } from '../services/faceRecognitionService';
 import { EnrolledProfile } from '../types/profiles';
 import { ProfileManager } from '../components/security/ProfileManager';
+import { profilesQuery } from '../services/dashboardData';
 
 type CameraSource = 'esp32' | 'laptop';
+const EMPTY_PROFILES: EnrolledProfile[] = [];
 
 export const CameraPage: React.FC = () => {
   const [source, setSource] = useState<CameraSource>('esp32');
-  const [profiles, setProfiles] = useState<EnrolledProfile[]>([]);
+  const profileSnapshot = useSyncExternalStore(profilesQuery.subscribe, profilesQuery.getSnapshot);
+  const profiles = profileSnapshot.data?.data || EMPTY_PROFILES;
   const [profileOpen, setProfileOpen] = useState(false);
   const [espReady, setEspReady] = useState(false);
   const [visionStatus, setVisionStatus] = useState('Preparing face verification…');
@@ -24,8 +27,8 @@ export const CameraPage: React.FC = () => {
   const lastEventRef = useRef(0);
   const processingRef = useRef(false);
 
-  const loadProfiles = useCallback(async () => { try { const res = await ApiClient.getProfiles(); if (res.success) setProfiles(res.data); } catch {} }, []);
-  useEffect(() => { loadProfiles(); }, [loadProfiles]);
+  const loadProfiles = useCallback(async () => { await profilesQuery.load(true); }, []);
+  useEffect(() => { void profilesQuery.load(); }, []);
   useEffect(() => { FaceRecognitionService.initialize().then(() => setVisionStatus('Face verification ready')).catch(() => setVisionStatus('Face model could not load')); }, []);
   useEffect(() => () => camera.stopCamera(), [camera.stopCamera]);
 

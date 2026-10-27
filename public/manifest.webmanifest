@@ -1,6 +1,7 @@
 {
   "name": "FLOORGUARD Smart Anti-Theft Floor Mat",
   "short_name": "FLOORGUARD",
+  "id": "/",
   "description": "Live home security, camera verification and floor-mat alerts.",
   "start_url": "/",
   "scope": "/",
@@ -9,6 +10,9 @@
   "background_color": "#ffffff",
   "theme_color": "#f5b800",
   "icons": [
-    { "src": "/favicon.png", "sizes": "any", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/icons/icon-192-v2.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512-v2.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-192-v2.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/maskable-512-v2.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
