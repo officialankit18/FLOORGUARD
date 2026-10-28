@@ -31,7 +31,13 @@ export function filterHistory(events: SecurityEvent[], from = '', to = '', categ
       && (!search || `${event.metadata?.recognizedName || ''} ${event.description} ${event.eventType}`.toLowerCase().includes(search.toLowerCase()));
   });
 }
-export function historyCsv(events: SecurityEvent[]) {
+export function historyCsv(events: SecurityEvent[], imageFiles?: Map<string, string>) {
   const cell = (value: string) => '"' + (/^[=+@\-\t\r]/.test(value) ? "'" : '') + value.replace(/"/g, '""') + '"';
-  return [['Timestamp', 'Event', 'Person', 'Source', 'Description', 'Attended'], ...events.map(event => [event.timestamp, event.eventType, event.metadata?.recognizedName || '', event.source, event.description, event.acknowledged ? 'Yes' : 'No'])].map(row => row.map(cell).join(',')).join('\r\n');
+  const headers = ['Timestamp', 'Event', 'Person', 'Source', 'Description', 'Attended'];
+  if (imageFiles) headers.push('Image file');
+  return [headers, ...events.map(event => {
+    const row = [event.timestamp, event.eventType, event.metadata?.recognizedName || '', event.source, event.description, event.acknowledged ? 'Yes' : 'No'];
+    if (imageFiles) row.push(imageFiles.get(event.id) || '');
+    return row;
+  })].map(row => row.map(cell).join(',')).join('\r\n');
 }
