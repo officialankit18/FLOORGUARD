@@ -1,0 +1,5 @@
+# MongoDB Atlas connection on Render
+
+If Render logs `tlsv1 alert internal error` and Settings shows MongoDB Offline, inspect the Atlas project **Network Access** list. The earlier temporary `0.0.0.0/0` entry was set for one day; if it expired, Render cannot connect. Add an access entry that covers the Render service's current outbound IP or CIDR, then verify the Atlas database user and the private `MONGODB_URI` in Render Environment Variables. Atlas may take a short time to apply access-list edits. Keep TLS certificate verification enabled.
+
+This release prevents failed Atlas handshakes from blocking web-service startup. It also avoids repeated connection attempts every few seconds by waiting one minute before retrying. Until Atlas reconnects, local history works only temporarily: Render's filesystem is ephemeral and local changes can be lost on a restart. Confirm `[MongoDB] Atlas connected.` and `[MongoDB] Cloud history loaded.` in the next deployment logs before relying on cloud history.

@@ -6,11 +6,14 @@ import { EnrolledProfile } from '../../../src/types/profiles';
 let client: MongoClient | null = null;
 let db: Db | null = null;
 let connecting: Promise<boolean> | null = null;
+let retryAfter = 0;
+const RETRY_DELAY_MS = 60_000;
 
 async function connect() {
   if (db) return true;
   const uri = process.env.MONGODB_URI;
   if (!uri) return false;
+  if (Date.now() < retryAfter) return false;
   if (!connecting) {
     connecting = (async () => {
       try {
@@ -22,6 +25,7 @@ async function connect() {
           db.collection('events').createIndex({ timestamp: -1 }),
           db.collection('profiles').createIndex({ id: 1 }, { unique: true }),
         ]);
+        retryAfter = 0;
         console.log('[MongoDB] Atlas connected.');
         return true;
       } catch (error) {
@@ -29,6 +33,7 @@ async function connect() {
         await client?.close().catch(() => undefined);
         client = null;
         db = null;
+        retryAfter = Date.now() + RETRY_DELAY_MS;
         return false;
       }
     })();
@@ -96,4 +101,5 @@ export async function closeMongo() {
   client = null;
   db = null;
   connecting = null;
+  retryAfter = 0;
 }
