@@ -164,10 +164,6 @@ async function bootstrapMongo() {
   }
   try {
     const cloud = await hydrate();
-    if (!cloud) {
-      console.warn('[MongoDB] Atlas unavailable. Skipping migration; local history remains active.');
-      return;
-    }
     if (cloud && (cloud.devices.length || cloud.events.length || cloud.profiles.length)) {
       store.setCloudSnapshot(cloud);
       console.log('[MongoDB] Cloud history loaded.');
