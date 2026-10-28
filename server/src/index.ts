@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { WebSocketServer } from 'ws';
 import path from 'path';
 import { pushConfig, subscribePush, pushReady } from './services/pushService';
+import { startKeepAlive } from './services/keepAlive';
 
 import { initWebSocketServer } from './services/websocketService';
 import { startMqttBridge } from './services/mqttBridge';
@@ -106,6 +107,10 @@ app.get('/api/health', async (_req, res) => {
   });
 });
 
+app.get('/api/keepalive', (_req, res) => {
+  res.set('Cache-Control', 'no-store').json({ status: 'OK', service: 'FLOORGUARD', timestamp: new Date().toISOString() });
+});
+
 // Device Endpoints
 app.get('/api/devices', getDevices);
 app.get('/api/devices/:id/status', getDeviceStatus);
@@ -181,6 +186,7 @@ async function startServer() {
   console.log(`[FLOOR GUARD Backend] Server running on http://localhost:${PORT}`);
   console.log(`[FLOOR GUARD Backend] WebSocket streaming live on ws://localhost:${PORT}/ws`);
   startMqttBridge();
+  startKeepAlive();
   });
 }
 
