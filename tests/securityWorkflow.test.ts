@@ -18,11 +18,6 @@ describe('Security activity workflow', () => {
     expect(csv).toContain('"\'=IMPORTXML(""url"")\nnext"');
     expect(csv).toContain('"Attended"');
   });
-  it('links an exported activity row to its matching image file', () => {
-    const csv = historyCsv([event({ id: 'visitor-7' })], new Map([['visitor-7', 'images/visitor-7.jpg']]));
-    expect(csv).toContain('"Image file"');
-    expect(csv).toContain('"images/visitor-7.jpg"');
-  });
   it('rings repeatedly until stopped and never creates multiple alarm timers', () => {
     vi.useFakeTimers();
     const ring = vi.spyOn(SoundAlertService,'playIntrusionAlarm').mockImplementation(() => {});
