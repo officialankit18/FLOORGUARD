@@ -164,9 +164,15 @@ async function bootstrapMongo() {
   }
   try {
     const cloud = await hydrate();
-    if (cloud && (cloud.devices.length || cloud.events.length || cloud.profiles.length)) {
+    if (!cloud) {
+      console.warn('[MongoDB] Atlas unavailable. Migration skipped; cloud history was not loaded.');
+      return;
+    }
+    if (cloud.devices.length || cloud.events.length || cloud.profiles.length) {
       store.setCloudSnapshot(cloud);
-      console.log('[MongoDB] Cloud history loaded.');
+      console.log(`[MongoDB] Cloud history loaded: ${cloud.events.length} events, ${cloud.profiles.length} profiles, ${cloud.devices.length} devices.`);
+    } else if (process.env.RENDER || process.env.RENDER_EXTERNAL_URL) {
+      console.warn('[MongoDB] Cloud database is empty. Skipping migration from Render local files.');
     } else {
       await Promise.all([
         ...store.getDevices().map(saveDevice),
