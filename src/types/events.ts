@@ -10,6 +10,8 @@ export type EventType =
   | 'Visitor Attended'
   | 'Footstep Event'
   | 'Potential Intrusion'
+  | 'Floor Object Detected'
+  | 'Floor Verification Unavailable'
   | 'Face Detected'
   | 'Known Face Match'
   | 'Unknown Face'
@@ -39,6 +41,7 @@ export interface SecurityEvent {
     piezoVoltage?: number;
     piezoReading?: number;
     faceConfidence?: number;
+    personConfidence?: number;
     recognizedProfileId?: string;
     recognizedName?: string;
     distance?: number;

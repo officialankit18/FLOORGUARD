@@ -1,11 +1,26 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-export const SplashScreen: React.FC = () => (
-  <div className="fixed inset-0 z-[100] flex min-h-screen items-center justify-center overflow-hidden bg-white px-8 text-center">
-    <div className="relative flex max-w-sm flex-col items-center">
-      <p className="animate-fg-logo-in text-4xl font-black tracking-[-0.06em] text-fg-ink">FLOOR<span className="text-red-600">GUARD</span></p>
-      <p className="mt-3 text-base font-semibold text-fg-muted"><span className="inline-block overflow-hidden whitespace-nowrap border-r-2 border-fg-amber pr-1 animate-fg-type">One Step Can Save Your Home.</span></p>
-      <div className="mt-8 h-1.5 w-32 overflow-hidden rounded-full bg-fg-yellowSoft"><div className="h-full w-1/2 animate-fg-loader rounded-full bg-fg-yellow" /></div>
-    </div>
-  </div>
-);
+export const SplashScreen: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
+  const video = useRef<HTMLVideoElement>(null);
+  const [leaving, setLeaving] = useState(false);
+  const finish = useCallback(() => setLeaving(true), []);
+
+  useEffect(() => {
+    // A missing video or blocked playback must never trap the app behind the splash.
+    const fallback = window.setTimeout(finish, 8000);
+    return () => window.clearTimeout(fallback);
+  }, [finish]);
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = window.setTimeout(onComplete, 220);
+    return () => window.clearTimeout(timer);
+  }, [leaving, onComplete]);
+
+  return <div className={`fg-video-splash ${leaving ? 'is-leaving' : ''}`} role="status" aria-label="Opening FLOORGUARD">
+    <video ref={video} src="/splash-intro-3s-v1.mp4" autoPlay muted playsInline preload="auto"
+      disablePictureInPicture onEnded={finish} onError={finish}
+      onCanPlayThrough={() => { if (!leaving && video.current?.paused) void video.current.play().catch(finish); }}
+      aria-hidden="true" />
+    <button type="button" onClick={finish} className="fg-splash-skip">Skip</button>
+  </div>;
+};

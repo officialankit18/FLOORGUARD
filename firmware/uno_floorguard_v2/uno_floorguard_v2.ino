@@ -4,8 +4,8 @@
 constexpr byte PIEZO_PIN = A0, BUZZER_PIN = A1, SERVO_PIN = A4;
 constexpr int PIEZO_THRESHOLD = 365;
 Servo door;
-bool doorOn = false, alarmActive = false, sensorHigh = false;
-unsigned long heartbeatAt = 0, stoppedAt = 0;
+bool doorOn = false, alarmActive = false, sensorHigh = false, floorPending = false;
+unsigned long heartbeatAt = 0, stoppedAt = 0, candidateAt = 0;
 char command[100];
 byte used = 0;
 bool overflow = false;
@@ -23,8 +23,15 @@ void handle(char* line) {
   } else if (strncmp(line, "DOOR:OFF", 8) == 0 && (line[8] == 0 || line[8] == ':')) {
     doorOn = false; door.write(0); state("door_state", false, line[8] == ':' ? line + 9 : nullptr);
   } else if (strncmp(line, "ALARM:STOP", 10) == 0 && (line[10] == 0 || line[10] == ':')) {
-    alarmActive = false; digitalWrite(BUZZER_PIN, LOW); stoppedAt = millis();
+    alarmActive = false; floorPending = false; digitalWrite(BUZZER_PIN, LOW); stoppedAt = millis();
     state("buzzer_state", false, line[10] == ':' ? line + 11 : nullptr);
+  } else if (strncmp(line, "ALARM:START:", 12) == 0 && strlen(line + 12) <= 48) {
+    if (floorPending && millis() - candidateAt < 20000) {
+      floorPending = false; alarmActive = true; digitalWrite(BUZZER_PIN, HIGH);
+      state("buzzer_state", true, line + 12);
+    }
+  } else if (strcmp(line, "FLOOR:REJECT") == 0) {
+    floorPending = false; stoppedAt = millis();
   } else if (strcmp(line, "STATUS") == 0) {
     state("door_state", doorOn); state("buzzer_state", alarmActive);
   }
@@ -45,11 +52,12 @@ void loop() {
     else overflow = true;
   }
   const bool high = analogRead(PIEZO_PIN) >= PIEZO_THRESHOLD;
-  if (high && !sensorHigh && !alarmActive && millis() - stoppedAt > 2000) {
-    alarmActive = true; digitalWrite(BUZZER_PIN, HIGH);
-    Serial.println(F("{\"type\":\"intrusion\"}")); state("buzzer_state", true);
+  if (high && !sensorHigh && !alarmActive && !floorPending && millis() - stoppedAt > 2000) {
+    floorPending = true; candidateAt = millis();
+    Serial.println(F("{\"type\":\"floor_candidate\"}"));
   }
   sensorHigh = high;
+  if (floorPending && millis() - candidateAt >= 20000) { floorPending = false; stoppedAt = millis(); }
   // Alarm intentionally remains latched until ALARM:STOP.
   if (millis() - heartbeatAt > 10000) {
     heartbeatAt = millis(); state("door_state", doorOn); state("buzzer_state", alarmActive);

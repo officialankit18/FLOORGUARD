@@ -2,18 +2,45 @@ export class SoundAlertService {
   private static audioCtx: AudioContext | null = null;
   private static isSoundEnabled = false;
   private static alarmTimer: ReturnType<typeof setInterval> | null = null;
+  private static intrusionAudio: HTMLAudioElement | null = null;
+  private static notificationAudio: HTMLAudioElement | null = null;
+  private static alarmRequested = false;
   public static startContinuousAlarm() {
-    if (this.alarmTimer) return;
-    this.playIntrusionAlarm();
-    this.alarmTimer = setInterval(() => this.playIntrusionAlarm(), 1100);
+    this.alarmRequested = true;
+    if (!this.isSoundEnabled) return;
+    this.prepareAudio();
+    if (!this.intrusionAudio || !this.intrusionAudio.paused) return;
+    this.intrusionAudio.loop = true;
+    this.intrusionAudio.currentTime = 0;
+    void this.intrusionAudio.play().catch(() => {
+      if (!this.alarmRequested || this.alarmTimer) return;
+      this.playSyntheticAlarm();
+      this.alarmTimer = setInterval(() => this.playSyntheticAlarm(), 1100);
+    });
   }
   public static stopContinuousAlarm() {
+    this.alarmRequested = false;
+    if (this.intrusionAudio) { this.intrusionAudio.pause(); this.intrusionAudio.currentTime = 0; }
     if (this.alarmTimer) clearInterval(this.alarmTimer);
     this.alarmTimer = null;
   }
 
+  private static prepareAudio() {
+    if (!this.intrusionAudio) { this.intrusionAudio = new Audio('/sounds/intrusion-alarm.mp3'); this.intrusionAudio.preload = 'auto'; }
+    if (!this.notificationAudio) { this.notificationAudio = new Audio('/sounds/notification.mp3'); this.notificationAudio.preload = 'auto'; }
+  }
+
+  public static playNotificationSound() {
+    if (!this.isSoundEnabled) return;
+    this.prepareAudio();
+    const sound = this.notificationAudio?.cloneNode(true) as HTMLAudioElement | undefined;
+    if (sound) { sound.volume = 0.85; void sound.play().catch(() => undefined); }
+  }
+
   public static setSoundEnabled(enabled: boolean) {
     this.isSoundEnabled = enabled;
+    if (enabled) { this.prepareAudio(); if (this.alarmRequested) this.startContinuousAlarm(); }
+    else if (this.alarmRequested) { this.intrusionAudio?.pause(); if (this.alarmTimer) clearInterval(this.alarmTimer); this.alarmTimer = null; }
     if (enabled && !this.audioCtx) {
       try {
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -48,6 +75,13 @@ export class SoundAlertService {
    * Play active intrusion alert buzzer (dual-tone oscillation)
    */
   public static playIntrusionAlarm() {
+    if (!this.isSoundEnabled) return;
+    this.prepareAudio();
+    const sound = this.intrusionAudio?.cloneNode(true) as HTMLAudioElement | undefined;
+    if (sound) { void sound.play().catch(() => this.playSyntheticAlarm()); }
+  }
+
+  private static playSyntheticAlarm() {
     const ctx = this.ensureContext();
     if (!ctx) return;
 

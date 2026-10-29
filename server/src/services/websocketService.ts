@@ -34,9 +34,10 @@ export function broadcastEvent(event: SecurityEvent) {
   void pushSecurityEvent(event).catch(() => console.warn('[Push] Notification dispatch failed'));
   void captureFloorIncident(event).then(updated => { if (updated) broadcastEventUpdate({ ...updated, metadata: { ...updated.metadata, snapshotUrl: `/api/events/${updated.id}/snapshot` } }); }).catch(() => console.warn('[Camera] Floor snapshot unavailable'));
   if (!wss) return;
+  const view = event.metadata?.snapshotUrl?.startsWith('data:') ? { ...event, metadata: { ...event.metadata, snapshotUrl: `/api/events/${event.id}/snapshot` } } : event;
   const payload = JSON.stringify({
     type: 'NEW_SECURITY_EVENT',
-    data: event
+    data: view
   });
 
   wss.clients.forEach(client => {

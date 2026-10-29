@@ -133,6 +133,10 @@ export class ApiClient {
     return this.request(`/profiles/${id}`, { method: 'DELETE' });
   }
 
+  public static async renameProfile(id: string, name: string): Promise<{ success: boolean; data: EnrolledProfile }> {
+    return this.request(`/profiles/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name }) });
+  }
+
   public static async clearAllProfiles(): Promise<{ success: boolean; message: string }> {
     return this.request('/profiles', { method: 'DELETE' });
   }

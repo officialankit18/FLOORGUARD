@@ -1,5 +1,8 @@
 # Dependencies
 node_modules/
+.relay-tools/
+.relay-runtime/
+.env.relay
 .pnp
 .pnp.js
 
@@ -12,6 +15,7 @@ build/
 .env.local
 .env.*.local
 secrets/
+firmware/**/secrets.h
 *.service-account.json
 
 # Logs

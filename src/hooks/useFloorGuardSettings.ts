@@ -1,21 +1,32 @@
 import { useEffect, useSyncExternalStore } from 'react';
+import { normalizeRelayUrl } from '../services/cameraRelay';
 
 export interface FloorGuardSettings {
+  notifications?: { unknownFace: boolean; intrusion: boolean; deviceOffline: boolean; doorActivity: boolean };
   theme?: 'light' | 'dark';
   emergencyNumber?: string;
   floorCameraIp?: string;
   autoOpenDoor?: boolean;
   doorOpenValue?: 'unconfigured' | 'on' | 'off';
   espCameraIp: string;
+  cameraRelayUrl?: string;
   mqttUrl: string;
   mqttUsername: string;
   mqttPassword: string;
   mqttTopicPrefix: string;
 }
 const KEY = 'floorguard.settings.v1';
-const DEFAULTS: FloorGuardSettings = { espCameraIp: '', mqttUrl: '', mqttUsername: '', mqttPassword: '', mqttTopicPrefix: '' };
+export const DEFAULT_NOTIFICATIONS = { unknownFace: true, intrusion: true, deviceOffline: true, doorActivity: false };
+const DEFAULTS: FloorGuardSettings = { espCameraIp: '', mqttUrl: '', mqttUsername: '', mqttPassword: '', mqttTopicPrefix: '', notifications: DEFAULT_NOTIFICATIONS };
 function load(): FloorGuardSettings {
-  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return DEFAULTS; }
+  let saved = DEFAULTS;
+  try { saved = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; saved.notifications = { ...DEFAULT_NOTIFICATIONS, ...saved.notifications }; } catch { /* Use defaults. */ }
+  const relay = normalizeRelayUrl(new URLSearchParams(location.search).get('relay') || '');
+  if (relay) {
+    saved = { ...saved, cameraRelayUrl: relay };
+    try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch { /* Session still works. */ }
+  }
+  return saved;
 }
 let settings = load();
 let pending: Promise<void> | null = null;

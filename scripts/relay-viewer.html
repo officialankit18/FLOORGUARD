@@ -1,0 +1,19 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FLOORGUARD · Live cameras</title><style>
+body{margin:0;background:#fffaf0;color:#171717;font:16px system-ui,sans-serif}main{max-width:1000px;margin:auto;padding:28px 20px}h1{letter-spacing:-1px}h1 span{color:#dc2626}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}article{background:white;border:1px solid #f4d674;border-radius:22px;overflow:hidden}header{padding:18px;display:flex;justify-content:space-between;align-items:center}img{display:block;width:100%;aspect-ratio:4/3;object-fit:contain;background:#171717}.status{font-size:12px;color:#a16207}.online{color:#047857}p{color:#657080}a{color:#171717}footer{margin-top:24px}
+</style></head><body><main><h1>FLOOR<span>GUARD</span></h1><p>Live cameras · Local Wi-Fi relay from your home laptop</p><div class="grid"><article><header><b>ESP32 camera</b><span id="esp32-status" class="status">Connecting…</span></header><img id="esp32" alt="ESP32 live camera"></article><article><header><b>Laptop camera</b><span id="laptop-status" class="status">Connecting…</span></header><img id="laptop" alt="Laptop live camera"></article></div><footer><a id="app">Open in FLOORGUARD</a><p>Available only on this home Wi-Fi. Keep the relay laptop on and connected.</p></footer></main><script>
+const names=['esp32','laptop'];
+for(const name of names){
+ const img=document.getElementById(name),badge=document.getElementById(name+'-status');
+ let socket,current='',last=Date.now(),count=0,sequence=0,displayed=0;
+ function connect(){
+  socket=new WebSocket(location.origin.replace(/^http/,'ws')+'/live?camera='+name);socket.binaryType='blob';
+  socket.onmessage=async event=>{const number=++sequence,active=socket,url=URL.createObjectURL(event.data),frame=new Image();frame.src=url;
+   try{await frame.decode();if(active!==socket||number<displayed){URL.revokeObjectURL(url);return;}displayed=number;img.src=url;URL.revokeObjectURL(current);current=url;last=Date.now();count++;badge.className='status online';}
+   catch{URL.revokeObjectURL(url);}finally{if(active.readyState===1)active.send('ready');}
+  };
+  socket.onerror=()=>socket.close();socket.onclose=()=>{badge.textContent='Reconnecting…';badge.className='status';setTimeout(connect,1500);};
+ }
+ connect();setInterval(()=>{badge.textContent=Date.now()-last>5000?'Camera offline · Reconnecting':'Live · '+count+' fps';if(Date.now()-last>5000){img.removeAttribute('src');badge.className='status';}count=0;},1000);
+}
+document.getElementById('app').href=`http://${location.hostname}:5173/camera?relay=${encodeURIComponent(location.origin)}`;
+</script></body></html>

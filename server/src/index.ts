@@ -29,11 +29,13 @@ import {
 import {
   getProfiles,
   enrollProfile,
+  renameProfile,
   deleteProfile,
   clearAllProfiles
 } from './controllers/profileController';
 import { store } from './database/store';
 import { getMongoStatus, hydrate, isMongoEnabled, saveDevice, saveEvent, saveProfile } from './services/mongoPersistence';
+import { personDetectorStatus, warmPersonDetector } from './services/personDetector';
 
 dotenv.config();
 
@@ -104,6 +106,7 @@ app.get('/api/health', async (_req, res) => {
     timestamp: new Date().toISOString(),
     mongo: await getMongoStatus(),
     push: pushReady() ? 'Configured' : 'Keys needed',
+    floorVerifier: process.env.FLOOR_VERIFIER_ENABLED === '1' || (!process.env.RENDER && !process.env.RENDER_EXTERNAL_URL && process.env.FLOOR_VERIFIER_ENABLED !== '0') ? personDetectorStatus() : 'Disabled on this backend',
   });
 });
 
@@ -131,6 +134,7 @@ app.delete('/api/events', clearAllEvents);
 // Profile Management Endpoints
 app.get('/api/profiles', getProfiles);
 app.post('/api/profiles', enrollProfile);
+app.patch('/api/profiles/:id', renameProfile);
 app.delete('/api/profiles/:id', deleteProfile);
 app.delete('/api/profiles', clearAllProfiles);
 
@@ -192,6 +196,7 @@ async function startServer() {
   console.log(`[FLOOR GUARD Backend] Server running on http://localhost:${PORT}`);
   console.log(`[FLOOR GUARD Backend] WebSocket streaming live on ws://localhost:${PORT}/ws`);
   startMqttBridge();
+  if (process.env.FLOOR_VERIFIER_ENABLED === '1' || (!process.env.RENDER && !process.env.RENDER_EXTERNAL_URL && process.env.FLOOR_VERIFIER_ENABLED !== '0')) warmPersonDetector();
   startKeepAlive();
   });
 }

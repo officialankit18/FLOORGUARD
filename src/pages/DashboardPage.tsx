@@ -1,50 +1,88 @@
-import React, { useEffect, useState, useSyncExternalStore } from 'react';
-import { Link } from 'react-router-dom';
-import { ShieldCheck, DoorClosed, DoorOpen, Check, ArrowUpRight, Clock, Camera, Users, Bell } from 'lucide-react';
-import { useDeviceStatus } from '../hooks/useDeviceStatus';
-import { useMqttConnection } from '../hooks/useMqttConnection';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { CameraOff, Check, CircleAlert, Users, ShieldCheck, TriangleAlert, LockKeyhole, UnlockKeyhole, Maximize } from 'lucide-react';
 import { historyQuery, isIntrusion } from '../services/securityWorkflow';
-import { ApiClient } from '../services/apiClient';
+import { useMqttConnection } from '../hooks/useMqttConnection';
+import { useDeviceStatus } from '../hooks/useDeviceStatus';
+import { devicesQuery, profilesQuery } from '../services/dashboardData';
+import { useFloorGuardSettings } from '../hooks/useFloorGuardSettings';
+import { normalizeRelayUrl } from '../services/cameraRelay';
+import { useRelayFeed } from '../hooks/useRelayFeed';
+
+const HouseIllustration = () => <img className="fg-home-hero-image" src="/branding/home-hero-blue.png" alt="" fetchPriority="high" />;
+
+function greetingFor(hour: number) {
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
 export const DashboardPage: React.FC = () => {
   const { device, wsConnected } = useDeviceStatus();
-  const snapshot = useSyncExternalStore(historyQuery.subscribe, historyQuery.getSnapshot);
-  const { openDoor, closeDoor, commandStatus } = useMqttConnection();
+  const history = useSyncExternalStore(historyQuery.subscribe, historyQuery.getSnapshot);
+  const { openDoor, closeDoor, commandStatus, doorSignal } = useMqttConnection();
   const [notice, setNotice] = useState('');
-  const [busy, setBusy] = useState('');
-  useEffect(() => { void historyQuery.load(); }, []);
-  const events = snapshot.data || [];
-  const today = events.filter(event => new Date(event.timestamp).toDateString() === new Date().toDateString());
-  const waiting = events.filter(event => event.eventType === 'Unknown Face' && !event.acknowledged);
+  const [requestedDoorState, setRequestedDoorState] = useState<boolean | null>(null);
+  const [hour, setHour] = useState(new Date().getHours());
+  useEffect(() => { void historyQuery.load(); const timer = setInterval(() => setHour(new Date().getHours()), 30000); return () => clearInterval(timer); }, []);
+  const profiles = useSyncExternalStore(profilesQuery.subscribe, profilesQuery.getSnapshot);
+  const { settings } = useFloorGuardSettings();
+  const relayUrl = normalizeRelayUrl(settings.cameraRelayUrl || '') || normalizeRelayUrl(`http://${location.hostname}:3012`);
+  useEffect(() => { void profilesQuery.load(); }, []);
+  useEffect(() => {
+    const refreshLiveData = () => {
+      if (document.visibilityState !== 'visible') return;
+      void historyQuery.load(); void profilesQuery.load(); void devicesQuery.load();
+    };
+    document.addEventListener('visibilitychange', refreshLiveData);
+    window.addEventListener('focus', refreshLiveData);
+    return () => { document.removeEventListener('visibilitychange', refreshLiveData); window.removeEventListener('focus', refreshLiveData); };
+  }, []);
+  useEffect(() => { if (doorSignal !== null) setRequestedDoorState(doorSignal); }, [doorSignal]);
+
   const alert = device.isTriggered || device.buzzerState;
-  const attend = async (id: string) => {
-    setBusy(id);
-    try {
-      const result = await ApiClient.acknowledgeEvent(id, 'Home owner');
-      historyQuery.update(current => current?.map(event => event.id === id ? result.data : event));
-      await ApiClient.createEvent({ eventType: 'Visitor Attended', source: 'User Action', description: 'Visitor attended by the home owner.', severity: 'info', mode: 'LIVE_CONNECTED', metadata: { relatedEventId: id } });
-    } catch { setNotice('Could not save attendance. Please retry.'); } finally { setBusy(''); }
+  const displayName = profiles.data?.data[0]?.name?.split(' ')[0] || 'there';
+  const secure = wsConnected && device.status === 'Connected' && !alert;
+  const today = (history.data || []).filter(event => new Date(event.timestamp).toDateString() === new Date().toDateString());
+  const known = today.filter(event => event.eventType === 'Known Face Match').length;
+  const unknown = today.filter(event => event.eventType === 'Unknown Face').length;
+  const stats = [{ label: 'Visitors', value: known + unknown, icon: Users }, { label: 'Verified', value: known, icon: ShieldCheck }, { label: 'Unknown', value: unknown, icon: Users }, { label: 'Alerts', value: today.filter(isIntrusion).length, icon: TriangleAlert }];
+  const relayHint = relayUrl ? '' : 'Add the local Wi-Fi relay address in Settings to start live cameras.';
+  const doorOpen = doorSignal ?? requestedDoorState;
+  const requestDoorState = (open: boolean) => {
+    const sent = open ? openDoor() : closeDoor();
+    if (sent) { setRequestedDoorState(open); setNotice(open ? 'Door opening request sent.' : 'Door closing request sent.'); }
+    else setNotice('Set up your door connection and opening signal first.');
   };
-  const unlock = async (id?: string) => {
-    if (!openDoor()) { setNotice('Configure the door-opening signal in Settings and connect MQTT first.'); return; }
-    setNotice('Door-open request sent. Waiting for the device to confirm.');
-    await ApiClient.createEvent({ eventType: 'Door Open Requested', source: 'User Action', description: 'Owner requested door opening.', severity: 'info', mode: 'LIVE_CONNECTED', metadata: { relatedEventId: id } }).catch(() => setNotice('Door request sent, but history could not be saved.'));
-  };
-  const close = async () => {
-    if (!closeDoor()) { setNotice('Unable to send: check MQTT, door signal settings, or wait for the pending command.'); return; }
-    setNotice('Door-close request sent. Waiting for device confirmation.');
-    await ApiClient.createEvent({ eventType: 'Door Close Requested', source: 'User Action', description: 'Owner requested door closing.', severity: 'info', mode: 'LIVE_CONNECTED' }).catch(() => setNotice('Close request sent, but history could not be saved.'));
-  };
-  return <main className="fg-page">
-    <section className={`fg-home-status ${alert ? 'alert' : ''}`}><span>HOME STATUS</span><h1>{alert ? 'Your home needs attention.' : 'Good to see you.'}</h1><div><p>{alert ? 'Active floor-sensor intrusion.' : wsConnected ? 'No active floor-sensor intrusion reported.' : 'Connecting to your home…'}</p><i className={alert ? 'danger' : wsConnected ? 'online' : ''} aria-label={alert ? 'Alert active' : wsConnected ? 'Live updates connected' : 'Connecting'} /></div></section>
-    <div className="fg-home-stats"><section className="fg-card"><Users size={23} /><b>{snapshot.isLoading ? '—' : today.filter(e => ['Known Face Match', 'Unknown Face'].includes(e.eventType)).length}</b><span>people checked today</span></section><section className="fg-card"><ShieldCheck size={23} /><b>{snapshot.isLoading ? '—' : today.filter(e => e.eventType === 'Unknown Face').length}</b><span>unverified visitors today</span></section></div>
-    {notice && <p className="fg-notice" role="status">{notice}</p>}
-    {commandStatus !== 'No pending door request' && <p className="fg-notice" role="status">{commandStatus}</p>}
-    {waiting.slice(0, 5).map(visitor => <article key={visitor.id} className="fg-card fg-visitor-review"><header><Bell size={19} />Visitor waiting for your review</header><div className="fg-visitor-content"><div className="flex gap-4">{visitor.metadata?.snapshotUrl ? <img src={visitor.metadata.snapshotUrl} alt="Visitor at the entrance" className="fg-visitor-photo" /> : <div className="fg-visitor-photo flex items-center justify-center"><Camera /></div>}<div className="min-w-0"><h3>Unverified visitor</h3><time><Clock size={14} />{new Date(visitor.timestamp).toLocaleString()}</time><p>This person is not in your household member list.</p></div></div><button className="fg-button w-full mt-5" onClick={() => void unlock(visitor.id)}><DoorOpen size={19} />Open the door</button><button className="fg-button secondary w-full mt-2" disabled={busy === visitor.id} onClick={() => void attend(visitor.id)}><Check size={17} />{busy === visitor.id ? 'Saving…' : 'Mark attended'}</button></div></article>)}
-    {!waiting.length && <section className="fg-card fg-empty"><ShieldCheck size={30} /><h3>{snapshot.isLoading ? 'Checking visitor history…' : 'All visitors attended'}</h3><p>New visitor photos and arrival times will appear here.</p></section>}
-    {snapshot.error && <p className="fg-notice">History is unavailable. <button onClick={() => void historyQuery.load(true)}>Retry</button></p>}
-    <section className="fg-card fg-mat-block"><div className="fg-section-title"><div><span className="fg-eyebrow">Door &amp; floor mat</span><h2>{alert ? 'Intrusion detected' : wsConnected && device.status === 'Connected' ? 'All clear' : 'Waiting for device'}</h2></div><span className="fg-pill">{alert ? 'ALERT' : wsConnected && device.status === 'Connected' ? 'MONITORING' : 'CONNECTING'}</span></div><p>{alert ? 'Your floor sensor has reported activity. Review the alert.' : wsConnected && device.status === 'Connected' ? 'Piezo sensor is monitoring the entrance mat.' : 'Device status will appear when connected.'}</p><div className="fg-home-stats mt-4"><div><b>{today.filter(e => e.eventType === 'Known Face Match').length}</b><span>verified visits today</span></div><div><b>{today.filter(isIntrusion).length}</b><span>floor alerts today</span></div></div></section>
-    <section className="fg-card"><div className="fg-section-title"><h2>Door control</h2><span className="fg-pill">{device.status}</span></div><p className="fg-muted">Reported device signal: {device.servoLocked ? 'ON' : 'OFF'}. Commands are confirmed by your controller.</p><div className="flex flex-wrap gap-3 mt-4"><button className="fg-button" onClick={() => void unlock()}><DoorOpen size={18} />Open door</button><button className="fg-button secondary" onClick={() => void close()}><DoorClosed size={18} />Close door</button></div></section>
-    <section className="fg-card"><h2>Recent activity</h2>{events.slice(0, 4).map(event => <div className="fg-timeline-item" key={event.id}><div className={`fg-timeline-dot ${isIntrusion(event) ? 'danger' : ''}`} /><div><h3>{event.metadata?.recognizedName || event.eventType}</h3><p>{event.description}</p><time>{new Date(event.timestamp).toLocaleString()}</time></div></div>)}<Link className="fg-text-link" to="/history">Explore all activity <ArrowUpRight size={16} /></Link></section>
+
+  return <main className={`fg-new-home ${alert ? 'is-alert' : ''}`}>
+    <section className="fg-home-welcome">
+      <div className="fg-home-copy"><p>{greetingFor(hour)},</p><h1>{displayName}!</h1><span>{alert ? 'Your home needs your attention.' : secure ? 'Your home is safe and protected.' : 'Keeping an eye on your home.'}</span></div>
+      <HouseIllustration />
+    </section>
+
+    <section className={`fg-live-status ${alert ? 'alert' : ''}`} aria-live="polite">
+      <span className="fg-status-shield">{alert ? <CircleAlert /> : <Check />}</span>
+      <div><h2>{alert ? 'Intrusion detected' : secure ? 'System secure' : 'System connecting'}</h2><p>{alert ? 'Floor-sensor activity was reported. Check the live cameras now.' : secure ? 'No intrusion detected. All devices are working properly.' : 'Connecting to your FLOORGUARD devices…'}</p></div>
+      <span className={`fg-live-pill ${alert ? 'alert' : ''}`}><i />{alert ? 'Alert' : secure ? 'Live' : 'Connecting'}</span>
+    </section>
+
+    <section className="fg-reference-stats" aria-label="Today's activity">{stats.map(({ label, value, icon: Icon }) => <article key={label}><span><Icon /></span><b>{history.data ? value : '—'}</b><p>{label}</p></article>)}</section>
+    <section className="fg-reference-controls"><h2>Quick Control</h2><div><button className={doorOpen === true ? 'is-open' : ''} aria-pressed={doorOpen === true} onClick={() => requestDoorState(true)}><UnlockKeyhole /><span><b>Open</b>Door</span></button><button className={doorOpen === false ? 'is-closed' : ''} aria-pressed={doorOpen === false} onClick={() => requestDoorState(false)}><LockKeyhole /><span><b>Close</b>Door</span></button></div>{(notice || commandStatus !== 'No pending door request') && <p role="status">{notice || commandStatus}</p>}</section>
+
+    <section className="fg-live-cameras" aria-labelledby="live-cameras-title">
+      <div className="fg-live-heading"><h2 id="live-cameras-title">Live Camera Preview</h2></div>
+      <CameraFeed label="Entrance Camera" subtitle="ESP32 entrance camera" relayUrl={relayUrl} camera="esp32" />
+      <CameraFeed label="Cam 2" subtitle="Door camera · laptop" relayUrl={relayUrl} camera="laptop" />
+      {relayHint && <p className="fg-camera-help">{relayHint}</p>}
+    </section>
   </main>;
 };
+
+function CameraFeed({ label, subtitle, relayUrl, camera }: { label: string; subtitle: string; relayUrl: string; camera: string }) {
+  const imageRef = useRef<HTMLImageElement>(null);
+  const feed = useRelayFeed(relayUrl, camera, imageRef);
+  const ready = Boolean(relayUrl);
+  const live = ready && feed.status === 'Live relay';
+  const [aspectRatio, setAspectRatio] = useState('4 / 3');
+  return <article className="fg-home-camera"><div className="fg-camera-frame" style={{ aspectRatio }}><img ref={imageRef} src={feed.src || undefined} alt="" onLoad={event => { const { naturalWidth, naturalHeight } = event.currentTarget; if (naturalWidth && naturalHeight) setAspectRatio(`${naturalWidth} / ${naturalHeight}`); }} style={{ opacity: live ? 1 : 0 }} />{!live && <div className="fg-camera-offline"><CameraOff size={28} /><span>{ready ? feed.status : 'Camera waiting'}</span></div>}<span className={`fg-camera-live ${live ? '' : 'offline'}`}><i />{live ? 'Live' : 'Offline'}</span><button className="fg-camera-expand" aria-label={`Expand ${label}`} onClick={event => { void event.currentTarget.parentElement?.requestFullscreen?.().catch(() => undefined); }}><Maximize /></button></div><footer><div><h3>{label}</h3><p>{subtitle}</p></div><span className="fg-camera-state">{live ? '● Live' : 'Connecting'}</span></footer></article>;
+}

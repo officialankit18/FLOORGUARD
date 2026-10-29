@@ -192,6 +192,15 @@ class Store {
     return profile;
   }
 
+  public renameProfile(id: string, name: string): EnrolledProfile | undefined {
+    const profile = this.data.profiles.find(item => item.id === id);
+    if (!profile) return undefined;
+    profile.name = name;
+    this.save(this.data);
+    void saveProfile(profile).catch((error) => console.warn('[MongoDB] Profile update sync failed:', error.message));
+    return profile;
+  }
+
   public deleteProfile(id: string): boolean {
     const initialLen = this.data.profiles.length;
     this.data.profiles = this.data.profiles.filter(p => p.id !== id);

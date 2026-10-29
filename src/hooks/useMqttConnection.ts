@@ -11,10 +11,12 @@ function useMqttSession(settings: FloorGuardSettings) {
   const pendingStop = useRef<{ id: string; sentAt: number } | null>(null);
   const lastSeen = useRef(0);
   const [commandStatus, setCommandStatus] = useState('No pending door request');
+  const [doorSignal, setReportedDoorSignal] = useState<boolean | null>(null);
 
   useEffect(() => {
     clientRef.current?.end(true);
     clientRef.current = null;
+    setReportedDoorSignal(null);
     const prefix = settings.mqttTopicPrefix.replace(/^\/+|\/+$/g, '');
     if (!settings.mqttUrl || !prefix) { setWebStatus('Not configured'); setDeviceStatus('Waiting'); return; }
     setWebStatus('Connecting');
@@ -32,6 +34,7 @@ function useMqttSession(settings: FloorGuardSettings) {
           if (!['door_state', 'buzzer_state', 'intrusion', 'status', 'heartbeat'].includes(event.type)) return;
           setDeviceStatus('Connected');
           lastSeen.current = Date.now();
+          if (event.type === 'door_state' && typeof event.on === 'boolean') setReportedDoorSignal(event.on);
           if (pendingStop.current && !packet.retain && event.type === 'buzzer_state' && event.on === false && event.requestId === pendingStop.current.id) {
             pendingStop.current = null; setCommandStatus('Controller confirmed the hardware alarm stopped.');
             void ApiClient.createEvent({eventType:'Alarm Stop Confirmed',source:'System Controller',severity:'success',mode:'LIVE_CONNECTED',description:'Controller acknowledged the hardware buzzer stop command.'}).catch(() => undefined);
@@ -45,7 +48,7 @@ function useMqttSession(settings: FloorGuardSettings) {
           }
         } catch { /* Ignore malformed broker payloads. */ }
       });
-      client.on('close', () => { if (!cancelled) { setWebStatus('Error'); setDeviceStatus('Waiting'); } });
+      client.on('close', () => { if (!cancelled) { setWebStatus('Error'); setDeviceStatus('Waiting'); setReportedDoorSignal(null); } });
       client.on('error', () => { if (!cancelled) setWebStatus('Error'); });
     }).catch(() => { if (!cancelled) setWebStatus('Error'); });
     return () => { cancelled = true; activeClient?.end(true); };
@@ -64,17 +67,27 @@ function useMqttSession(settings: FloorGuardSettings) {
     return () => clearInterval(timer);
   }, []);
 
-  const setDoor = useCallback((open: boolean) => {
+  const sendDoorSignal = useCallback((on: boolean, action: string) => {
     const prefix = settings.mqttTopicPrefix.replace(/^\/+|\/+$/g, '');
-    if (!clientRef.current?.connected || !prefix || !settings.doorOpenValue || settings.doorOpenValue === 'unconfigured') return false;
-    if (pendingDoor.current) return false;
-    const id = crypto.randomUUID(), on = open ? settings.doorOpenValue === 'on' : settings.doorOpenValue !== 'on';
-    const action = open ? 'opening' : 'closing';
+    if (!clientRef.current?.connected || !prefix) { setCommandStatus('Connect MQTT before sending a door command.'); return false; }
+    if (pendingDoor.current) { setCommandStatus('Waiting for the previous door command to finish.'); return false; }
+    const id = crypto.randomUUID();
     pendingDoor.current = { id, on, action, sentAt: Date.now() };
-    setCommandStatus(`${open ? 'Opening' : 'Closing'} requested. Waiting for controller confirmation…`);
-    clientRef.current.publish(`${prefix}/command`, JSON.stringify({ type: 'set_door', on, requestId: id, ts: new Date().toISOString() }), { qos: 1 });
+    setCommandStatus(`Door ${action} requested. Waiting for controller confirmation…`);
+    clientRef.current.publish(`${prefix}/command`, JSON.stringify({ type: 'set_door', on, requestId: id, ts: new Date().toISOString() }), { qos: 1, retain: false }, error => {
+      if (error && pendingDoor.current?.id === id) {
+        pendingDoor.current = null;
+        setCommandStatus('Door command could not be sent. Check MQTT and retry.');
+      }
+    });
     return true;
-  }, [settings.mqttTopicPrefix, settings.doorOpenValue]);
+  }, [settings.mqttTopicPrefix]);
+
+  const setDoorSignal = useCallback((on: boolean) => sendDoorSignal(on, on ? 'ON' : 'OFF'), [sendDoorSignal]);
+  const setDoor = useCallback((open: boolean) => {
+    if (!settings.doorOpenValue || settings.doorOpenValue === 'unconfigured') return false;
+    return sendDoorSignal(open ? settings.doorOpenValue === 'on' : settings.doorOpenValue !== 'on', open ? 'opening' : 'closing');
+  }, [settings.doorOpenValue, sendDoorSignal]);
 
   const openDoor = useCallback(() => setDoor(true), [setDoor]);
   const closeDoor = useCallback(() => setDoor(false), [setDoor]);
@@ -87,7 +100,7 @@ function useMqttSession(settings: FloorGuardSettings) {
     return true;
   }, [settings.mqttTopicPrefix]);
 
-  return { webStatus, deviceStatus, openDoor, closeDoor, stopDeviceAlarm, commandStatus };
+  return { webStatus, deviceStatus, doorSignal, openDoor, closeDoor, setDoorSignal, stopDeviceAlarm, commandStatus };
 }
 
 const MqttContext = createContext<ReturnType<typeof useMqttSession> | null>(null);

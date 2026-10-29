@@ -13,13 +13,13 @@ export const historyQuery = new QueryResource(async () => {
     page++;
   } while (page <= totalPages);
   return events;
-});
+}, 15_000);
 export const isIntrusion = (event: SecurityEvent) => ['Potential Intrusion', 'Footstep Event'].includes(event.eventType);
 subscribeLive(message => {
   if (message.type === 'NEW_SECURITY_EVENT' || message.type === 'SECURITY_EVENT_UPDATED') {
     historyQuery.update(current => current ? [message.data, ...current.filter(event => event.id !== message.data.id)].sort((a, b) => b.timestamp.localeCompare(a.timestamp)) : undefined);
   }
-  if (message.type === 'CONNECTION_ESTABLISHED') void historyQuery.load(true);
+  if (message.type === 'CONNECTION_ESTABLISHED') void historyQuery.load();
 });
 
 export function filterHistory(events: SecurityEvent[], from = '', to = '', category = '', search = '') {
@@ -33,5 +33,5 @@ export function filterHistory(events: SecurityEvent[], from = '', to = '', categ
 }
 export function historyCsv(events: SecurityEvent[]) {
   const cell = (value: string) => '"' + (/^[=+@\-\t\r]/.test(value) ? "'" : '') + value.replace(/"/g, '""') + '"';
-  return [['Timestamp', 'Event', 'Person', 'Source', 'Description', 'Attended'], ...events.map(event => [event.timestamp, event.eventType, event.metadata?.recognizedName || '', event.source, event.description, event.acknowledged ? 'Yes' : 'No'])].map(row => row.map(cell).join(',')).join('\r\n');
+  return [['Timestamp', 'Event', 'Person', 'Source', 'Description', 'Attended', 'Photo URL'], ...events.map(event => [event.timestamp, event.eventType, event.metadata?.recognizedName || '', event.source, event.description, event.acknowledged ? 'Yes' : 'No', event.metadata?.snapshotUrl ? new URL(event.metadata.snapshotUrl, window.location.origin).href : ''])].map(row => row.map(cell).join(',')).join('\r\n');
 }

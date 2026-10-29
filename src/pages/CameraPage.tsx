@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { CameraOff, CheckCircle2, RefreshCw, UserPlus, UsersRound } from 'lucide-react';
+import { ArrowLeft, Camera, CameraOff, Expand, RefreshCw, Settings2, ShieldCheck, UserPlus, UsersRound } from 'lucide-react';
 import { useCamera } from '../hooks/useCamera';
 import { useFloorGuardSettings } from '../hooks/useFloorGuardSettings';
 import { ApiClient } from '../services/apiClient';
@@ -8,6 +8,9 @@ import { EnrolledProfile } from '../types/profiles';
 import { ProfileManager } from '../components/security/ProfileManager';
 import { profilesQuery } from '../services/dashboardData';
 import { useMqttConnection } from '../hooks/useMqttConnection';
+import { normalizeRelayUrl } from '../services/cameraRelay';
+import { useRelayFeed } from '../hooks/useRelayFeed';
+import { NotificationService } from '../services/notificationService';
 
 type CameraSource = 'esp32' | 'laptop';
 const EMPTY_PROFILES: EnrolledProfile[] = [];
@@ -21,13 +24,18 @@ export const CameraPage: React.FC = () => {
   const [visionStatus, setVisionStatus] = useState('Preparing face verification…');
   const [lastResult, setLastResult] = useState<'waiting' | 'known' | 'unknown'>('waiting');
   const [lastName, setLastName] = useState('');
-  const [lowLightBoost, setLowLightBoost] = useState(true);
   const camera = useCamera();
   const { settings } = useFloorGuardSettings();
+  const relayUrl = normalizeRelayUrl(settings.cameraRelayUrl || '') || normalizeRelayUrl(`http://${location.hostname}:3012`);
+  const [streamAttempt, setStreamAttempt] = useState(0);
+  const retryStream = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(retryStream.current), []);
   const { openDoor } = useMqttConnection();
   const [monitoring, setMonitoring] = useState(true);
   const [actionStatus, setActionStatus] = useState('');
   const espImageRef = useRef<HTMLImageElement>(null);
+  const cameraFrameRef = useRef<HTMLDivElement>(null);
+  const relayFeed = useRelayFeed(relayUrl, source, espImageRef);
   const visitsRef = useRef(new Map<string, number>());
   const candidateRef = useRef({ name: '', frames: 0 });
   const processingRef = useRef(false);
@@ -40,7 +48,7 @@ export const CameraPage: React.FC = () => {
   useEffect(() => () => camera.stopCamera(), [camera.stopCamera]);
 
   const snapshot = useCallback(() => {
-    const element = source === 'laptop' ? camera.videoRef.current : espImageRef.current;
+    const element = source === 'laptop' && !relayUrl ? camera.videoRef.current : espImageRef.current;
     const width = element instanceof HTMLVideoElement ? element.videoWidth : element?.naturalWidth || 0;
     const height = element instanceof HTMLVideoElement ? element.videoHeight : element?.naturalHeight || 0;
     if (!element || !width || !height) return null;
@@ -48,7 +56,15 @@ export const CameraPage: React.FC = () => {
     const ctx = canvas.getContext('2d'); if (!ctx) return null;
     ctx.drawImage(element, 0, 0, width, height);
     return canvas.toDataURL('image/jpeg', 0.82);
-  }, [camera.videoRef, source]);
+  }, [camera.videoRef, source, relayUrl]);
+  const saveSnapshot = useCallback(() => {
+    const image = snapshot();
+    if (!image) { setActionStatus('Wait for a live camera frame before taking a snapshot.'); return; }
+    const download = document.createElement('a');
+    download.href = image; download.download = `floorguard-${source}-${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`;
+    download.click();
+    setActionStatus('Snapshot saved to this device.');
+  }, [snapshot, source]);
 
   const sendRecognitionEvent = useCallback(async (known: boolean, cameraSource: CameraSource, frame: HTMLCanvasElement, name?: string) => {
     const key = known ? name || 'member' : 'visitor';
@@ -62,6 +78,7 @@ export const CameraPage: React.FC = () => {
     canvas.getContext('2d')?.drawImage(frame, 0, 0, canvas.width, canvas.height);
     try {
       const event = await ApiClient.createEvent({ eventType: known ? 'Known Face Match' : 'Unknown Face', source: cameraSource === 'esp32' ? 'ESP32-CAM' : 'Local Browser Camera', severity: known ? 'success' : 'warning', mode: 'LIVE_CONNECTED', description: known ? `${name || 'Household member'} verified at entrance.` : 'Someone is at your entrance. Please attend your visitor.', metadata: { recognizedName: name, snapshotUrl: canvas.toDataURL('image/jpeg', 0.75), cameraRole: 'entrance' } });
+      if (!known && !event.deduplicated) void NotificationService.notify(event.data);
       if (known && settings.autoOpenDoor && !event.deduplicated && activeRef.current.monitoring && activeRef.current.source === cameraSource) {
         const sent = openDoor();
         setActionStatus(sent ? 'Door opening requested. Awaiting controller response.' : 'Member verified. Configure door signal and connect MQTT to open automatically.');
@@ -102,45 +119,65 @@ export const CameraPage: React.FC = () => {
   }, [profiles, sendRecognitionEvent]);
 
   useEffect(() => {
-    if (!monitoring || source !== 'laptop' || !camera.isActive) return;
+    if (!monitoring || source !== 'laptop' || !camera.isActive || relayUrl) return;
     const timer = window.setInterval(() => { if (camera.videoRef.current) void evaluateFrame(camera.videoRef.current, 'laptop'); }, 650);
     return () => window.clearInterval(timer);
-  }, [camera.isActive, evaluateFrame, source, monitoring]);
+  }, [camera.isActive, evaluateFrame, source, monitoring, relayUrl]);
 
   useEffect(() => {
-    if (!monitoring || source !== 'esp32' || !settings.espCameraIp) return;
+    if (relayUrl || !monitoring || source !== 'esp32' || !settings.espCameraIp) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     const controller = new AbortController();
     const inspectEspSnapshot = async () => {
       try {
-        const response = await fetch(`/api/camera/capture?ip=${encodeURIComponent(settings.espCameraIp)}`, { cache: 'no-store', signal: controller.signal });
+        const url = relayUrl ? `${relayUrl}/camera/${source}/capture` : `/api/camera/capture?ip=${encodeURIComponent(settings.espCameraIp)}`;
+        const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
         if (!response.ok) throw new Error('capture failed');
         const blobUrl = URL.createObjectURL(await response.blob());
         const frame = new Image();
         try {
           frame.src = blobUrl; await frame.decode();
-          if (!cancelled) { setEspReady(true); await evaluateFrame(frame, 'esp32'); }
+          if (!cancelled) { setEspReady(true); await evaluateFrame(frame, source); }
         } finally { URL.revokeObjectURL(blobUrl); }
-      } catch { if (!cancelled) { setEspReady(false); setVisionStatus('ESP32 snapshot unavailable — check IP and camera Wi-Fi'); } }
+      } catch { if (!cancelled) { setEspReady(false); setVisionStatus(relayUrl ? 'Relay camera offline — check the home laptop and camera connection' : 'ESP32 snapshot unavailable — check IP and camera Wi-Fi'); } }
       finally { if (!cancelled) timer = setTimeout(inspectEspSnapshot, 750); }
     };
     inspectEspSnapshot();
     return () => { cancelled = true; clearTimeout(timer); controller.abort(); };
-  }, [evaluateFrame, settings.espCameraIp, source, monitoring]);
+  }, [evaluateFrame, settings.espCameraIp, source, monitoring, relayUrl]);
 
-  const espStream = settings.espCameraIp ? `/api/camera/stream?ip=${encodeURIComponent(settings.espCameraIp)}` : '';
-  const selectSource = async (next: CameraSource) => { setSource(next); if (next === 'laptop' && !camera.isActive) await camera.startCamera(); if (next === 'esp32') camera.stopCamera(); };
+  useEffect(() => {
+    if (!relayUrl || !monitoring) return;
+    const timer = setInterval(() => { const image = espImageRef.current; if (image?.getAttribute('src') && image.complete && image.naturalWidth) void evaluateFrame(image, source); }, 650);
+    return () => clearInterval(timer);
+  }, [relayUrl, source, monitoring, evaluateFrame]);
 
-  return <main className="mx-auto max-w-xl space-y-5 px-5 py-6">
-    <div><p className="text-xs font-black uppercase tracking-[0.22em] text-fg-amber">Entrance verification</p><h1 className="mt-2 text-3xl font-black">Camera check</h1><p className="mt-2 text-sm text-fg-muted">Select one camera. Face verification compares the person with your enrolled household members.</p></div>
-    <section className="fg-card"><div className="fg-section-title"><h2>{monitoring ? 'Monitoring enabled' : 'Monitoring paused'}</h2><button className="fg-button secondary" onClick={() => setMonitoring(value => !value)}>{monitoring ? 'Pause' : 'Resume'}</button></div><p className="mt-3">Monitoring continues while you browse this app. Keep this browser open and awake. Use one monitoring device per entrance.</p>{actionStatus && <p role="status" className="fg-notice mt-3">{actionStatus}</p>}</section>
-    <div className="grid grid-cols-2 rounded-2xl bg-fg-yellowSoft p-1.5">{(['esp32', 'laptop'] as CameraSource[]).map((item) => <button key={item} onClick={() => selectSource(item)} className={`rounded-xl px-3 py-3 text-sm font-black ${source === item ? 'bg-fg-yellow text-fg-ink shadow-sm' : 'text-fg-muted'}`}>{item === 'esp32' ? 'CAM 1 · ESP32' : 'CAM 2 · Laptop'}</button>)}</div>
-    <section className="overflow-hidden rounded-3xl border border-fg-line bg-fg-ink shadow-fg-card"><div className="relative aspect-[4/3] bg-neutral-900">{source === 'esp32' ? (espStream ? <img ref={espImageRef} src={espStream} onLoad={() => setEspReady(true)} onError={() => { setEspReady(false); setVisionStatus('ESP32 stream unavailable — check IP and camera Wi-Fi'); }} className={`h-full w-full bg-black object-contain ${lowLightBoost ? 'brightness-110 contrast-110' : ''}`} alt="ESP32-CAM live stream" /> : <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center text-white/70"><CameraOff className="h-10 w-10 text-fg-yellow" /><p className="font-bold">Add the ESP32-CAM IP in Settings first.</p></div>) : <><video ref={camera.videoRef} autoPlay muted playsInline className={`h-full w-full bg-black object-contain ${lowLightBoost ? 'brightness-110 contrast-110' : ''} ${camera.isActive ? 'block' : 'hidden'}`} />{!camera.isActive && <div className="flex h-full flex-col items-center justify-center gap-3 text-white/70"><CameraOff className="h-10 w-10 text-fg-yellow" /><button onClick={() => camera.startCamera()} className="rounded-xl bg-fg-yellow px-4 py-2 text-sm font-black text-fg-ink">Start laptop camera</button></div>}</> }<div className="absolute left-3 top-3 rounded-full bg-black/60 px-3 py-1 text-[11px] font-black text-white">{source === 'esp32' ? 'CAM 1 · ESP32' : 'CAM 2 · LAPTOP'}</div><button onClick={() => setLowLightBoost(value => !value)} className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1 text-[11px] font-black text-white">{lowLightBoost ? 'Low-light boost ON' : 'Low-light boost OFF'}</button></div>
-      <div className="bg-white px-4 py-3"><div className="flex items-center justify-between"><span className="flex items-center gap-2 text-sm font-bold"><span className={`h-2.5 w-2.5 rounded-full ${lastResult === 'unknown' ? 'bg-red-500' : lastResult === 'known' ? 'bg-emerald-500' : 'bg-fg-amber'}`} />{lastResult === 'known' ? `${lastName} verified` : lastResult === 'unknown' ? 'Unverified visitor' : visionStatus}</span>{source === 'laptop' && <button onClick={() => camera.isActive ? camera.stopCamera() : camera.startCamera()} className="text-xs font-black text-fg-amber">{camera.isActive ? 'Stop' : 'Start'}</button>}</div>{camera.error && <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold leading-5 text-red-700">{camera.error}</p>}</div>
+  const espStream = relayUrl ? `${relayUrl}/camera/${source}/capture?frame=${streamAttempt}` : settings.espCameraIp ? `/api/camera/stream?ip=${encodeURIComponent(settings.espCameraIp)}&retry=${streamAttempt}` : '';
+  useEffect(() => { if (relayUrl) camera.stopCamera(); }, [relayUrl, camera.stopCamera]);
+  const selectSource = async (next: CameraSource) => { setSource(next); setLastResult('waiting'); setLastName(''); candidateRef.current = { name: '', frames: 0 }; if (next === 'laptop' && !relayUrl && !camera.isActive) await camera.startCamera(); if (next === 'esp32' || relayUrl) camera.stopCamera(); };
+
+  const cameraName = source === 'esp32' ? 'Entrance Camera' : 'Cam 2';
+  const cameraDetail = source === 'esp32' ? 'ESP32-CAM · entrance' : 'Laptop camera · local relay';
+  const cameraOnline = relayFeed.status === 'Live relay' || (!relayUrl && (source === 'esp32' ? espReady : camera.isActive));
+
+  return <main className="fg-camera-page">
+    <header className="fg-camera-title"><button onClick={() => history.back()} aria-label="Go back"><ArrowLeft /></button><h1>Camera</h1><button onClick={() => { location.href = '/settings'; }} aria-label="Camera settings"><Settings2 /></button></header>
+    <div className="fg-camera-tabs">{(['esp32', 'laptop'] as CameraSource[]).map(item => <button key={item} onClick={() => void selectSource(item)} className={source === item ? 'active' : ''}>{item === 'esp32' ? 'Entrance Camera' : 'Cam 2'}</button>)}</div>
+    <section className="fg-camera-stream" ref={cameraFrameRef}>
+      {source === 'esp32' || relayUrl ? (espStream ? <img key={`${source}-${relayUrl}`} ref={espImageRef} crossOrigin="anonymous" src={relayUrl ? relayFeed.src || undefined : espStream} onLoad={() => { setEspReady(true); clearTimeout(retryStream.current); }} onError={() => { setEspReady(false); setVisionStatus('Camera stream unavailable — reconnecting…'); clearTimeout(retryStream.current); if (!relayUrl) retryStream.current = setTimeout(() => setStreamAttempt(n => n + 1), 3000); }} alt={`${cameraName} live stream`} /> : <CameraWaiting />) : <>{camera.isActive ? <video ref={camera.videoRef} autoPlay muted playsInline /> : <CameraWaiting />} {!camera.isActive && <button className="fg-camera-start" onClick={() => void camera.startCamera()}>Start camera</button>}</>}
+      <span className={`fg-camera-live-badge ${cameraOnline ? '' : 'offline'}`}><i />{cameraOnline ? 'Live' : 'Connecting'}</span>
+      <time>{new Date().toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</time>
     </section>
-    <section className="rounded-3xl border border-fg-line bg-white p-5 shadow-fg-card"><div className="flex items-center justify-between"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-fg-muted">Household members</p><h2 className="mt-1 text-xl font-black">{profiles.length} enrolled</h2></div><UsersRound className="h-7 w-7 text-fg-amber" /></div><p className="mt-2 text-sm text-fg-muted">Add clear, consented reference photos. Unknown visitors are saved to the home screen for review.</p><button onClick={() => setProfileOpen(true)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-fg-yellow px-4 py-3 text-sm font-black"><UserPlus className="h-4 w-4" />Manage members</button></section>
-    <div className="flex items-center justify-center gap-2 text-xs text-fg-muted"><RefreshCw className="h-3.5 w-3.5" />Adaptive scanning · <CheckCircle2 className="h-3.5 w-3.5" />Silent visitor notifications</div>
-    <ProfileManager isOpen={profileOpen} onClose={() => setProfileOpen(false)} profiles={profiles} onProfilesChanged={loadProfiles} onCaptureSnapshot={snapshot} />
+    <section className="fg-camera-actions"><button onClick={saveSnapshot}><Camera /><span>Snapshot</span></button><button onClick={() => void cameraFrameRef.current?.requestFullscreen?.().catch(() => undefined)}><Expand /><span>Fullscreen</span></button></section>
+    <section className="fg-camera-information"><h2>Camera Information</h2><InfoRow label="Status" value={cameraOnline ? 'Online' : 'Connecting'} online /><InfoRow label="Camera" value={cameraName} /><InfoRow label="Source" value={cameraDetail} /><InfoRow label="IP address" value={source === 'esp32' ? (settings.espCameraIp || 'Not configured') : 'Home laptop relay'} /><InfoRow label="Face verification" value={visionStatus} /><button className="fg-camera-refresh" onClick={() => setStreamAttempt(value => value + 1)}><RefreshCw />Refresh Stream</button></section>
+    <section className="fg-face-status"><span><ShieldCheck /></span><div><h2>Face Verification</h2><p>{lastResult === 'known' ? `${lastName} verified` : lastResult === 'unknown' ? 'Unverified visitor captured and sent to the app.' : 'System is identifying visitors in real time.'}</p></div><b>{monitoring ? 'Ready' : 'Paused'}</b></section>
+    {actionStatus && <p className="fg-camera-notice" role="status">{actionStatus}</p>}
+    {camera.error && <p className="fg-camera-notice error">{camera.error}</p>}
+    <section className="fg-camera-members"><div><UsersRound /><span>{profiles.length} household members</span></div><button onClick={() => setProfileOpen(true)}><UserPlus />Manage members</button></section>
+    <ProfileManager isOpen={profileOpen} onClose={() => setProfileOpen(false)} profiles={profiles} onProfilesChanged={loadProfiles} />
   </main>;
 };
+
+const CameraWaiting = () => <div className="fg-camera-waiting"><CameraOff /><span>Waiting for camera feed</span></div>;
+const InfoRow = ({ label, value, online = false }: { label: string; value: string; online?: boolean }) => <div className="fg-camera-info-row"><span>{label}</span><b className={online ? 'online' : ''}>{value}</b></div>;

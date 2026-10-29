@@ -64,6 +64,15 @@ export const deleteProfile = (req: Request, res: Response) => {
   return res.json({ success: true, message: 'Profile deleted successfully.' });
 };
 
+export const renameProfile = (req: Request, res: Response) => {
+  const name = req.body?.name;
+  if (typeof name !== 'string' || !name.trim() || name.trim().length > 80) return res.status(400).json({ success: false, error: 'Enter a name of up to 80 characters.' });
+  const profile = store.renameProfile(req.params.id, name.trim());
+  if (!profile) return res.status(404).json({ success: false, error: 'Profile not found.' });
+  broadcastProfilesChanged();
+  return res.json({ success: true, data: profile });
+};
+
 export const clearAllProfiles = (_req: Request, res: Response) => {
   store.clearProfiles();
   broadcastProfilesChanged();

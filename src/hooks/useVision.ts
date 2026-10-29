@@ -98,7 +98,7 @@ export function useVision({
           description: `Authorized face match: "${result.recognitionMatch.name}" (${result.recognitionMatch.role || 'Personnel'}) confirmed with Euclidean distance ${result.recognitionMatch.distance}.`,
         });
       } else if (result.status === 'UNKNOWN_FACE') {
-        SoundAlertService.playIntrusionAlarm();
+        SoundAlertService.playNotificationSound();
         onSecurityEventTrigger({
           eventType: 'Unknown Face',
           severity: 'warning',

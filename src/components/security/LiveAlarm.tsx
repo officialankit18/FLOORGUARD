@@ -44,7 +44,7 @@ export const LiveAlarm: React.FC = () => {
     sessionStorage.setItem('floorguard.activeAlarm', event.id);
     setIncident(event); setPhoto(event.metadata?.snapshotUrl || ''); setNotice('');
     SoundAlertService.startContinuousAlarm();
-    if (settings.floorCameraIp) {
+    if (!event.metadata?.snapshotUrl && settings.floorCameraIp) {
       void fetch(`/api/camera/capture?ip=${encodeURIComponent(settings.floorCameraIp)}`).then(async response => {
         if (!response.ok) throw new Error('Snapshot unavailable');
         const blob = await response.blob();
@@ -55,7 +55,7 @@ export const LiveAlarm: React.FC = () => {
         };
         reader.readAsDataURL(blob);
       }).catch(() => setNotice('Floor-camera snapshot unavailable. Check its connection in Settings.'));
-    } else setNotice('Configure a floor-area camera in Settings to capture intrusion photos.');
+    } else if (!event.metadata?.snapshotUrl) setNotice('Configure a floor-area camera in Settings to capture intrusion photos.');
   }), [settings.floorCameraIp]);
   const stop = async () => {
     SoundAlertService.stopContinuousAlarm();
