@@ -6,15 +6,18 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
+import mqtt from 'mqtt';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 dotenv.config({ path: path.join(root, '.env.relay') });
+dotenv.config({ path: path.join(root, '.env') });
 const ip = process.env.RELAY_ESP_IP;
 if (!ip || !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip) || ip.split('.').some(n => +n > 255)) throw new Error('Set RELAY_ESP_IP in .env.relay');
 const port = Number(process.env.RELAY_PORT || 3012);
 const frames = { esp32: { data: null, at: 0, sequence: 0 }, laptop: { data: null, at: 0, sequence: 0 } };
 let stopped = false, webcam, webcamRetry, espTimer, espController;
 const viewers = new Set();
+let announcementClient, announcementTimer;
 const fresh = camera => Date.now() - camera.at < 5000 && camera.data;
 function publish(name, data) {
   frames[name] = { data, at: Date.now(), sequence: frames[name].sequence + 1 };
@@ -73,9 +76,19 @@ function startWebcam() {
   webcam.on('close', () => { if (!stopped) webcamRetry = setTimeout(startWebcam, 5000); });
 }
 
+const allowedOrigins = new Set(['https://floorguard.onrender.com', ...(process.env.RELAY_ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean)]);
+function allowedOrigin(origin) {
+  if (!origin) return true;
+  if (allowedOrigins.has(origin)) return true;
+  try {
+    const url = new URL(origin);
+    const local = ['localhost', '127.0.0.1'].includes(url.hostname) || /^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(url.hostname);
+    return url.protocol === 'http:' && local && ['5173', '4173', '4174', String(port)].includes(url.port);
+  } catch { return false; }
+}
 const app = express();
 app.disable('x-powered-by');
-app.use(cors({ origin: '*', methods: ['GET', 'HEAD'] }));
+app.use(cors({ origin: (origin, done) => done(null, allowedOrigin(origin) ? origin || false : false), methods: ['GET', 'HEAD'] }));
 app.use((_req, res, next) => { res.set({ 'Cache-Control': 'no-store, no-transform', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' }); next(); });
 app.get('/health', (_req, res) => res.json({ service: 'FLOORGUARD camera relay', cameras: Object.fromEntries(Object.entries(frames).map(([name, frame]) => [name, { online: Boolean(fresh(frame)), lastFrameAt: frame.at || null }])) }));
 app.get('/camera/:name/capture', (req, res) => {
@@ -102,7 +115,26 @@ app.get('/camera/:name/stream', (req, res) => {
 });
 app.get('/', (_req, res) => res.sendFile(path.join(root, 'scripts', 'relay-viewer.html')));
 function localAddresses() {
-  return Object.values(os.networkInterfaces()).flat().filter((address) => address && address.family === 'IPv4' && !address.internal).map((address) => address.address);
+  const interfaces = Object.entries(os.networkInterfaces()).filter(([name]) => !/virtual|vEthernet|WSL|VMware|VPN|Tailscale/i.test(name));
+  interfaces.sort(([a], [b]) => Number(/Wi-Fi|WLAN|Wireless/i.test(b)) - Number(/Wi-Fi|WLAN|Wireless/i.test(a)));
+  const addresses = interfaces.flatMap(([, entries]) => entries || []).filter(address => address.family === 'IPv4' && !address.internal).map(address => address.address);
+  return [...new Set(addresses.filter(address => /^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(address)))];
+}
+function announceRelay() {
+  if (!announcementClient?.connected) return;
+  const available = localAddresses();
+  const addresses = process.env.RELAY_HOST_IP && available.includes(process.env.RELAY_HOST_IP) ? [process.env.RELAY_HOST_IP] : available;
+  const urls = addresses.map(address => `http://${address}:${port}`);
+  announcementClient.publish(`${(process.env.DOORGUARD_MQTT_TOPIC_PREFIX || process.env.MQTT_TOPIC_PREFIX).replace(/^\/+|\/+$/g, '')}/camera_relay`, JSON.stringify({ urls, at: Date.now() }), { qos: 1, retain: true });
+}
+function startAnnouncement() {
+  const url = process.env.DOORGUARD_MQTT_URL || process.env.MQTT_URL;
+  const prefix = process.env.DOORGUARD_MQTT_TOPIC_PREFIX || process.env.MQTT_TOPIC_PREFIX;
+  if (!url || !prefix) { console.warn('[Relay] MQTT discovery unavailable; set the local relay address manually in Settings.'); return; }
+  announcementClient = mqtt.connect(url, { username: process.env.DOORGUARD_MQTT_USERNAME || process.env.MQTT_USERNAME, password: process.env.DOORGUARD_MQTT_PASSWORD || process.env.MQTT_PASSWORD, reconnectPeriod: 3000, connectTimeout: 10000 });
+  announcementClient.on('connect', () => { announceRelay(); clearInterval(announcementTimer); announcementTimer = setInterval(announceRelay, 15000); console.log('[Relay] Local address announced through MQTT.'); });
+  announcementClient.on('close', () => clearInterval(announcementTimer));
+  announcementClient.on('error', error => console.warn('[Relay] MQTT discovery:', error.message));
 }
 const server = app.listen(port, '0.0.0.0', () => {
   const addresses = localAddresses();
@@ -110,8 +142,9 @@ const server = app.listen(port, '0.0.0.0', () => {
   console.log(`Relay dashboard: http://127.0.0.1:${port}`);
   for (const address of addresses) console.log(`LOCAL WI-FI CAMERAS: http://${address}:${port}`);
   console.log(`Open the LOCAL WI-FI CAMERAS address only on devices connected to the same Wi-Fi.`);
+  startAnnouncement();
 });
-const wss = new WebSocketServer({ server, path: '/live', perMessageDeflate: false, maxPayload: 1024 });
+const wss = new WebSocketServer({ server, path: '/live', perMessageDeflate: false, maxPayload: 1024, verifyClient: ({ origin }, done) => done(allowedOrigin(origin), 403, 'Origin not allowed') });
 wss.on('connection', (socket, request) => {
   const camera = new URL(request.url, 'http://localhost').searchParams.get('camera');
   if (!['esp32', 'laptop'].includes(camera)) { socket.close(1008, 'Unknown camera'); return; }
@@ -123,5 +156,5 @@ wss.on('connection', (socket, request) => {
 });
 const viewerWatchdog = setInterval(() => { for (const viewer of viewers) if (viewer.inFlight && Date.now() - viewer.sentAt > 10000) viewer.terminate(); }, 3000);
 void streamEsp(); startWebcam();
-function stop() { stopped = true; espController?.abort(); clearInterval(viewerWatchdog); for (const viewer of viewers) viewer.terminate(); wss.close(); clearTimeout(espTimer); clearTimeout(webcamRetry); webcam?.kill(); server.close(); setTimeout(() => process.exit(0), 1000).unref(); }
+function stop() { stopped = true; espController?.abort(); clearInterval(announcementTimer); if (announcementClient?.connected) { announcementClient.publish(`${(process.env.DOORGUARD_MQTT_TOPIC_PREFIX || process.env.MQTT_TOPIC_PREFIX).replace(/^\/+|\/+$/g, '')}/camera_relay`, JSON.stringify({ urls: [], at: Date.now() }), { qos: 1, retain: true }); } announcementClient?.end(); clearInterval(viewerWatchdog); for (const viewer of viewers) viewer.terminate(); wss.close(); clearTimeout(espTimer); clearTimeout(webcamRetry); webcam?.kill(); server.close(); setTimeout(() => process.exit(0), 1000).unref(); }
 process.on('SIGINT', stop); process.on('SIGTERM', stop);

@@ -345,6 +345,7 @@ button:focus-visible,a:focus-visible { outline:3px solid var(--accent); outline-
 .fg-home-camera p { margin:3px 0 0; color:#718198; font-size:11px; }
 .fg-camera-state { max-width:46%; color:#0a8c58; text-align:right; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:10px; font-weight:800; }
 .fg-camera-help { margin:0; border-radius:16px; background:#fff7d9; color:#886102; padding:12px 14px; font-size:12px; line-height:1.45; }
+.fg-camera-help button, .fg-camera-notice button { margin-top:10px; border:0; border-radius:12px; background:#ffbf20; color:#17233b; padding:10px 16px; font-weight:800; cursor:pointer; }
 .fg-new-home.is-alert .fg-home-welcome { border-color:#ffacb4; background:linear-gradient(135deg,#fff9f9,#ffe9ed); }
 .fg-new-home.is-alert .fg-home-copy h1 { color:#9b1b2c; }
 @keyframes fg-home-alert { from { box-shadow:0 0 0 0 #ef444424; } to { box-shadow:0 0 0 9px #ef444410,0 18px 35px #ef444426; } }

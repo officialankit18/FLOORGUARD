@@ -8,9 +8,12 @@ This relay is local only. It shares the ESP32-CAM and the laptop webcam with dev
 2. Set the current ESP32 IP in `.env.relay` as `RELAY_ESP_IP`. Leave `RELAY_WEBCAM` as the laptop webcam name.
 3. In the project folder, run `npm run relay` and keep its window open.
 4. The relay prints an address such as `http://172.22.188.45:3012`. On any phone connected to the same Wi-Fi, open that address to view both cameras.
-5. For the FLOORGUARD app, open `http://<laptop-ip>:5173/camera?relay=http%3A%2F%2F<laptop-ip>%3A3012`, or paste the relay address into Settings → Local Wi-Fi camera relay and save.
+5. On a phone connected to the same Wi-Fi, open `https://floorguard.onrender.com`. The laptop announces its current local address over the existing MQTT connection, so the app finds it automatically. On the first visit, tap **Connect local cameras** and allow the browser's **Local network** permission. Later visits connect automatically while permission remains granted.
+6. If discovery is unavailable, paste the relay address into Settings → Camera Settings → Manual relay address and save.
 
 The laptop must stay powered on, awake, connected to Wi-Fi, and running the relay. A phone or another laptop on a different Wi-Fi/mobile-data connection cannot access this relay.
+
+Camera frames travel directly from the laptop to the phone on Wi-Fi; MQTT carries only the laptop's local address. The hosted HTTPS app requires a browser that supports Local Network Access for local `ws://` connections (recent Chrome on Android/desktop). Browser permission and a Wi-Fi network that allows devices to reach one another are required. If a browser blocks local connections from an HTTPS site, use the local app at `http://<laptop-ip>:5173` instead. The ESP32 feed needs a reachable `RELAY_ESP_IP`; Cam 2 works independently when the ESP32 is offline.
 
 ## Smooth playback
 

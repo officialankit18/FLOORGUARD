@@ -4,8 +4,7 @@ import { historyQuery, isIntrusion } from '../services/securityWorkflow';
 import { useMqttConnection } from '../hooks/useMqttConnection';
 import { useDeviceStatus } from '../hooks/useDeviceStatus';
 import { devicesQuery, profilesQuery } from '../services/dashboardData';
-import { useFloorGuardSettings } from '../hooks/useFloorGuardSettings';
-import { normalizeRelayUrl } from '../services/cameraRelay';
+import { useLocalRelay } from '../hooks/useLocalRelay';
 import { useRelayFeed } from '../hooks/useRelayFeed';
 
 const HouseIllustration = () => <img className="fg-home-hero-image" src="/branding/home-hero-blue.png" alt="" fetchPriority="high" />;
@@ -25,8 +24,7 @@ export const DashboardPage: React.FC = () => {
   const [hour, setHour] = useState(new Date().getHours());
   useEffect(() => { void historyQuery.load(); const timer = setInterval(() => setHour(new Date().getHours()), 30000); return () => clearInterval(timer); }, []);
   const profiles = useSyncExternalStore(profilesQuery.subscribe, profilesQuery.getSnapshot);
-  const { settings } = useFloorGuardSettings();
-  const relayUrl = normalizeRelayUrl(settings.cameraRelayUrl || '') || normalizeRelayUrl(`http://${location.hostname}:3012`);
+  const { relayUrl, status: relayStatus, requestAccess, hasAddress } = useLocalRelay();
   useEffect(() => { void profilesQuery.load(); }, []);
   useEffect(() => {
     const refreshLiveData = () => {
@@ -46,7 +44,7 @@ export const DashboardPage: React.FC = () => {
   const known = today.filter(event => event.eventType === 'Known Face Match').length;
   const unknown = today.filter(event => event.eventType === 'Unknown Face').length;
   const stats = [{ label: 'Visitors', value: known + unknown, icon: Users }, { label: 'Verified', value: known, icon: ShieldCheck }, { label: 'Unknown', value: unknown, icon: Users }, { label: 'Alerts', value: today.filter(isIntrusion).length, icon: TriangleAlert }];
-  const relayHint = relayUrl ? '' : 'Add the local Wi-Fi relay address in Settings to start live cameras.';
+  const relayHint = relayStatus === 'denied' ? 'Allow Local network access for FLOORGUARD in your browser site settings.' : relayStatus === 'unavailable' ? 'Local relay is unreachable. Check that your phone and laptop use the same Wi-Fi and the relay is running.' : !hasAddress ? 'Waiting for the home laptop to announce its local camera relay. You can also enter its address in Settings.' : '';
   const doorOpen = doorSignal ?? requestedDoorState;
   const requestDoorState = (open: boolean) => {
     const sent = open ? openDoor() : closeDoor();
@@ -71,6 +69,7 @@ export const DashboardPage: React.FC = () => {
 
     <section className="fg-live-cameras" aria-labelledby="live-cameras-title">
       <div className="fg-live-heading"><h2 id="live-cameras-title">Live Camera Preview</h2></div>
+      {relayStatus === 'permission-needed' && <div className="fg-camera-help"><p>Allow this site to connect to your home Wi-Fi cameras.</p><button type="button" onClick={() => void requestAccess()}>Connect local cameras</button></div>}
       <CameraFeed label="Entrance Camera" subtitle="ESP32 entrance camera" relayUrl={relayUrl} camera="esp32" />
       <CameraFeed label="Cam 2" subtitle="Door camera · laptop" relayUrl={relayUrl} camera="laptop" />
       {relayHint && <p className="fg-camera-help">{relayHint}</p>}

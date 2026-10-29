@@ -2,6 +2,7 @@ import { createContext, createElement, useContext, useCallback, useEffect, useRe
 import type { MqttClient } from 'mqtt';
 import { FloorGuardSettings, useFloorGuardSettings } from './useFloorGuardSettings';
 import { ApiClient } from '../services/apiClient';
+import { normalizeRelayUrl } from '../services/cameraRelay';
 
 function useMqttSession(settings: FloorGuardSettings) {
   const [webStatus, setWebStatus] = useState<'Not configured' | 'Connecting' | 'Connected' | 'Error'>('Not configured');
@@ -12,6 +13,8 @@ function useMqttSession(settings: FloorGuardSettings) {
   const lastSeen = useRef(0);
   const [commandStatus, setCommandStatus] = useState('No pending door request');
   const [doorSignal, setReportedDoorSignal] = useState<boolean | null>(null);
+  const [relayUrls, setRelayUrls] = useState<string[]>([]);
+  const relaySeenAt = useRef(0);
 
   useEffect(() => {
     clientRef.current?.end(true);
@@ -27,9 +30,17 @@ function useMqttSession(settings: FloorGuardSettings) {
       const client = mqtt.connect(settings.mqttUrl, { username: settings.mqttUsername || undefined, password: settings.mqttPassword || undefined, reconnectPeriod: 3000, clean: true, connectTimeout: 10000 });
       activeClient = client;
       clientRef.current = client;
-      client.on('connect', () => { setWebStatus('Connected'); client.subscribe(`${prefix}/event`, { qos: 1 }); });
+      client.on('connect', () => { setWebStatus('Connected'); client.subscribe([`${prefix}/event`, `${prefix}/camera_relay`], { qos: 1 }); });
       client.on('message', (_topic, payload, packet) => {
         try {
+          if (_topic === `${prefix}/camera_relay`) {
+            const announcement = JSON.parse(payload.toString());
+            if (!Number.isFinite(announcement.at) || Math.abs(Date.now() - announcement.at) > 45000 || !Array.isArray(announcement.urls)) return;
+            const urls = announcement.urls.slice(0, 5).map((item: unknown) => typeof item === 'string' ? normalizeRelayUrl(item) : '').filter((item: string) => item && !/\/\/(?:localhost|127\.0\.0\.1)(?::|$)/.test(item));
+            relaySeenAt.current = Date.now();
+            setRelayUrls(previous => JSON.stringify(previous) === JSON.stringify(urls) ? previous : urls);
+            return;
+          }
           const event = JSON.parse(payload.toString());
           if (!['door_state', 'buzzer_state', 'intrusion', 'status', 'heartbeat'].includes(event.type)) return;
           setDeviceStatus('Connected');
@@ -56,6 +67,7 @@ function useMqttSession(settings: FloorGuardSettings) {
 
   useEffect(() => {
     const timer = setInterval(() => {
+      if (relaySeenAt.current && Date.now() - relaySeenAt.current > 45000) { relaySeenAt.current = 0; setRelayUrls([]); }
       if (lastSeen.current && Date.now() - lastSeen.current > 45000) setDeviceStatus('Waiting');
       if (pendingStop.current && Date.now() - pendingStop.current.sentAt >= 15000) {
         pendingStop.current = null; setCommandStatus('Phone alarm stopped. Hardware stop is unconfirmed; check device firmware and connection.');
@@ -100,7 +112,7 @@ function useMqttSession(settings: FloorGuardSettings) {
     return true;
   }, [settings.mqttTopicPrefix]);
 
-  return { webStatus, deviceStatus, doorSignal, openDoor, closeDoor, setDoorSignal, stopDeviceAlarm, commandStatus };
+  return { webStatus, deviceStatus, doorSignal, relayUrls, openDoor, closeDoor, setDoorSignal, stopDeviceAlarm, commandStatus };
 }
 
 const MqttContext = createContext<ReturnType<typeof useMqttSession> | null>(null);

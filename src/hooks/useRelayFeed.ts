@@ -2,10 +2,11 @@ import { RefObject, useEffect, useState } from 'react';
 
 // Acknowledge only after decoding. The relay sends the latest frame rather than
 // queueing older frames behind a slow phone/network.
-export function useRelayFeed(base: string, camera: string, image: RefObject<HTMLImageElement>) {
+export function useRelayFeed(base: string, camera: string, image: RefObject<HTMLImageElement>, revision = 0) {
   const [feed, setFeed] = useState({ status: 'Connecting to relay…', src: '' });
   useEffect(() => {
-    if (!base) return;
+    if (!base) { setFeed({ status: 'Local relay not connected', src: '' }); return; }
+    setFeed({ status: 'Connecting to relay…', src: '' });
     let stopped = false, socket: WebSocket, retry: ReturnType<typeof setTimeout>, blobUrl = '', lastFrame = Date.now(), sequence = 0, displayed = 0;
     const connect = () => {
       if (stopped) return;
@@ -35,6 +36,6 @@ export function useRelayFeed(base: string, camera: string, image: RefObject<HTML
     connect();
     const watchdog = setInterval(() => { if (Date.now() - lastFrame > 5000) setFeed(current => ({ ...current, status: 'Waiting for fresh camera frames…' })); }, 2000);
     return () => { stopped = true; clearTimeout(retry); clearInterval(watchdog); socket?.close(); URL.revokeObjectURL(blobUrl); };
-  }, [base, camera, image]);
+  }, [base, camera, image, revision]);
   return feed;
 }

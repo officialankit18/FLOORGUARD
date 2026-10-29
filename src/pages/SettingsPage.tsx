@@ -9,6 +9,7 @@ import { healthQuery, profilesQuery } from '../services/dashboardData';
 import { NotificationService } from '../services/notificationService';
 import { CameraRelaySettings } from '../components/security/CameraRelaySettings';
 import { normalizeRelayUrl } from '../services/cameraRelay';
+import { useLocalRelay } from '../hooks/useLocalRelay';
 
 export const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -21,6 +22,7 @@ export const SettingsPage: React.FC = () => {
   const profiles = useSyncExternalStore(profilesQuery.subscribe, profilesQuery.getSnapshot);
   const { device } = useDeviceStatus();
   const { webStatus, deviceStatus } = useMqttConnection();
+  const { status: relayStatus, cameras: relayCameras } = useLocalRelay();
   useEffect(() => { void CameraService.isCameraSupported().then(setLaptopAvailable); void healthQuery.load(); void profilesQuery.load(); }, []);
   useEffect(() => { setDraft(settings); }, [settings]);
   const update = <K extends keyof typeof draft>(key: K, value: (typeof draft)[K]) => setDraft(previous => ({ ...previous, [key]: value }));
@@ -50,7 +52,7 @@ export const SettingsPage: React.FC = () => {
         <SettingRow icon={<Activity />} label="Floor Mat Sensor" onClick={() => open('sensor')} expanded={section === 'sensor'} />
         {section === 'sensor' && <div className="fg-settings-expanded"><Status label="Sensor" value={device.status} /><Status label="Last reading" value={String(device.lastReading)} /><Status label="Buzzer" value={device.buzzerState ? 'Active' : 'Off'} /><Status label="Threshold reported by device" value={String(device.piezoThreshold)} /><Status label="Person detector on this backend" value={health.data?.floorVerifier || 'Checking'} /></div>}
         <SettingRow icon={<Wifi />} label="Connection Test" onClick={() => { open('connection'); void healthQuery.load(true); }} expanded={section === 'connection'} />
-        {section === 'connection' && <div className="fg-settings-expanded"><Status label="Website API" value={health.data?.status === 'ONLINE' ? 'Connected' : 'Unavailable'} /><Status label="MongoDB history" value={health.data?.mongo || 'Checking'} /><Status label="Website MQTT" value={webStatus} /><Status label="Door device MQTT" value={deviceStatus} /><Status label="Entrance camera IP" value={draft.espCameraIp || 'Not configured'} /><Status label="Local camera relay" value={draft.cameraRelayUrl ? 'Configured — see Camera Settings for live status' : 'Not configured'} /><button type="button" className="fg-settings-recheck" onClick={() => void healthQuery.load(true)}>Recheck connections</button></div>}
+        {section === 'connection' && <div className="fg-settings-expanded"><Status label="Website API" value={health.data?.status === 'ONLINE' ? 'Connected' : 'Unavailable'} /><Status label="MongoDB history" value={health.data?.mongo || 'Checking'} /><Status label="Website MQTT" value={webStatus} /><Status label="Door device MQTT" value={deviceStatus} /><Status label="Entrance camera IP" value={draft.espCameraIp || 'Not configured'} /><Status label="Local camera relay" value={relayStatus === 'live' ? 'Connected' : relayStatus} /><Status label="Entrance Camera" value={relayCameras.esp32 ? 'Live' : 'Offline'} /><Status label="Cam 2" value={relayCameras.laptop ? 'Live' : 'Offline'} /><button type="button" className="fg-settings-recheck" onClick={() => void healthQuery.load(true)}>Recheck connections</button></div>}
       </section>
       <section className="fg-settings-panel"><PanelHeading icon={<Bell />} title="Notifications" subtitle="Get instant alerts on important events" color="red" />
         <Toggle icon={<UserRound />} label="Unknown Face Alert" checked={preferences.unknownFace} onChange={() => toggleNotification('unknownFace')} />

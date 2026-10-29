@@ -9,6 +9,7 @@ import { ProfileManager } from '../components/security/ProfileManager';
 import { profilesQuery } from '../services/dashboardData';
 import { useMqttConnection } from '../hooks/useMqttConnection';
 import { normalizeRelayUrl } from '../services/cameraRelay';
+import { useLocalRelay } from '../hooks/useLocalRelay';
 import { useRelayFeed } from '../hooks/useRelayFeed';
 import { NotificationService } from '../services/notificationService';
 
@@ -26,7 +27,8 @@ export const CameraPage: React.FC = () => {
   const [lastName, setLastName] = useState('');
   const camera = useCamera();
   const { settings } = useFloorGuardSettings();
-  const relayUrl = normalizeRelayUrl(settings.cameraRelayUrl || '') || normalizeRelayUrl(`http://${location.hostname}:3012`);
+  const { relayUrl, status: relayStatus, requestAccess, hasAddress } = useLocalRelay();
+  const allowLegacyLocal = location.protocol === 'http:' && Boolean(normalizeRelayUrl(`http://${location.hostname}:3012`));
   const [streamAttempt, setStreamAttempt] = useState(0);
   const retryStream = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => () => clearTimeout(retryStream.current), []);
@@ -35,7 +37,7 @@ export const CameraPage: React.FC = () => {
   const [actionStatus, setActionStatus] = useState('');
   const espImageRef = useRef<HTMLImageElement>(null);
   const cameraFrameRef = useRef<HTMLDivElement>(null);
-  const relayFeed = useRelayFeed(relayUrl, source, espImageRef);
+  const relayFeed = useRelayFeed(relayUrl, source, espImageRef, streamAttempt);
   const visitsRef = useRef(new Map<string, number>());
   const candidateRef = useRef({ name: '', frames: 0 });
   const processingRef = useRef(false);
@@ -48,7 +50,7 @@ export const CameraPage: React.FC = () => {
   useEffect(() => () => camera.stopCamera(), [camera.stopCamera]);
 
   const snapshot = useCallback(() => {
-    const element = source === 'laptop' && !relayUrl ? camera.videoRef.current : espImageRef.current;
+    const element = source === 'laptop' && !relayUrl && allowLegacyLocal ? camera.videoRef.current : espImageRef.current;
     const width = element instanceof HTMLVideoElement ? element.videoWidth : element?.naturalWidth || 0;
     const height = element instanceof HTMLVideoElement ? element.videoHeight : element?.naturalHeight || 0;
     if (!element || !width || !height) return null;
@@ -56,7 +58,7 @@ export const CameraPage: React.FC = () => {
     const ctx = canvas.getContext('2d'); if (!ctx) return null;
     ctx.drawImage(element, 0, 0, width, height);
     return canvas.toDataURL('image/jpeg', 0.82);
-  }, [camera.videoRef, source, relayUrl]);
+  }, [camera.videoRef, source, relayUrl, allowLegacyLocal]);
   const saveSnapshot = useCallback(() => {
     const image = snapshot();
     if (!image) { setActionStatus('Wait for a live camera frame before taking a snapshot.'); return; }
@@ -119,13 +121,13 @@ export const CameraPage: React.FC = () => {
   }, [profiles, sendRecognitionEvent]);
 
   useEffect(() => {
-    if (!monitoring || source !== 'laptop' || !camera.isActive || relayUrl) return;
+    if (!allowLegacyLocal || !monitoring || source !== 'laptop' || !camera.isActive || relayUrl) return;
     const timer = window.setInterval(() => { if (camera.videoRef.current) void evaluateFrame(camera.videoRef.current, 'laptop'); }, 650);
     return () => window.clearInterval(timer);
-  }, [camera.isActive, evaluateFrame, source, monitoring, relayUrl]);
+  }, [camera.isActive, evaluateFrame, source, monitoring, relayUrl, allowLegacyLocal]);
 
   useEffect(() => {
-    if (relayUrl || !monitoring || source !== 'esp32' || !settings.espCameraIp) return;
+    if (!allowLegacyLocal || relayUrl || !monitoring || source !== 'esp32' || !settings.espCameraIp) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     const controller = new AbortController();
@@ -145,7 +147,7 @@ export const CameraPage: React.FC = () => {
     };
     inspectEspSnapshot();
     return () => { cancelled = true; clearTimeout(timer); controller.abort(); };
-  }, [evaluateFrame, settings.espCameraIp, source, monitoring, relayUrl]);
+  }, [evaluateFrame, settings.espCameraIp, source, monitoring, relayUrl, allowLegacyLocal]);
 
   useEffect(() => {
     if (!relayUrl || !monitoring) return;
@@ -153,19 +155,22 @@ export const CameraPage: React.FC = () => {
     return () => clearInterval(timer);
   }, [relayUrl, source, monitoring, evaluateFrame]);
 
-  const espStream = relayUrl ? `${relayUrl}/camera/${source}/capture?frame=${streamAttempt}` : settings.espCameraIp ? `/api/camera/stream?ip=${encodeURIComponent(settings.espCameraIp)}&retry=${streamAttempt}` : '';
+  const espStream = relayUrl ? `${relayUrl}/camera/${source}/capture?frame=${streamAttempt}` : allowLegacyLocal && settings.espCameraIp ? `/api/camera/stream?ip=${encodeURIComponent(settings.espCameraIp)}&retry=${streamAttempt}` : '';
   useEffect(() => { if (relayUrl) camera.stopCamera(); }, [relayUrl, camera.stopCamera]);
-  const selectSource = async (next: CameraSource) => { setSource(next); setLastResult('waiting'); setLastName(''); candidateRef.current = { name: '', frames: 0 }; if (next === 'laptop' && !relayUrl && !camera.isActive) await camera.startCamera(); if (next === 'esp32' || relayUrl) camera.stopCamera(); };
+  const selectSource = async (next: CameraSource) => { setSource(next); setLastResult('waiting'); setLastName(''); candidateRef.current = { name: '', frames: 0 }; if (next === 'laptop' && !relayUrl && allowLegacyLocal && !camera.isActive) await camera.startCamera(); if (next === 'esp32' || relayUrl) camera.stopCamera(); };
 
   const cameraName = source === 'esp32' ? 'Entrance Camera' : 'Cam 2';
   const cameraDetail = source === 'esp32' ? 'ESP32-CAM · entrance' : 'Laptop camera · local relay';
-  const cameraOnline = relayFeed.status === 'Live relay' || (!relayUrl && (source === 'esp32' ? espReady : camera.isActive));
+  const cameraOnline = (Boolean(relayUrl) && relayFeed.status === 'Live relay') || (allowLegacyLocal && !relayUrl && (source === 'esp32' ? espReady : camera.isActive));
 
   return <main className="fg-camera-page">
     <header className="fg-camera-title"><button onClick={() => history.back()} aria-label="Go back"><ArrowLeft /></button><h1>Camera</h1><button onClick={() => { location.href = '/settings'; }} aria-label="Camera settings"><Settings2 /></button></header>
     <div className="fg-camera-tabs">{(['esp32', 'laptop'] as CameraSource[]).map(item => <button key={item} onClick={() => void selectSource(item)} className={source === item ? 'active' : ''}>{item === 'esp32' ? 'Entrance Camera' : 'Cam 2'}</button>)}</div>
+    {relayStatus === 'permission-needed' && <div className="fg-camera-notice"><p>Allow access to cameras on your home Wi-Fi.</p><button type="button" onClick={() => void requestAccess()}>Connect local cameras</button></div>}
+    {relayStatus === 'denied' && <p className="fg-camera-notice">Local network access is blocked. Enable it in your browser site settings.</p>}
+    {!hasAddress && !allowLegacyLocal && <p className="fg-camera-notice">Waiting for the home laptop relay. Start the relay or add its Wi-Fi address in Settings.</p>}
     <section className="fg-camera-stream" ref={cameraFrameRef}>
-      {source === 'esp32' || relayUrl ? (espStream ? <img key={`${source}-${relayUrl}`} ref={espImageRef} crossOrigin="anonymous" src={relayUrl ? relayFeed.src || undefined : espStream} onLoad={() => { setEspReady(true); clearTimeout(retryStream.current); }} onError={() => { setEspReady(false); setVisionStatus('Camera stream unavailable — reconnecting…'); clearTimeout(retryStream.current); if (!relayUrl) retryStream.current = setTimeout(() => setStreamAttempt(n => n + 1), 3000); }} alt={`${cameraName} live stream`} /> : <CameraWaiting />) : <>{camera.isActive ? <video ref={camera.videoRef} autoPlay muted playsInline /> : <CameraWaiting />} {!camera.isActive && <button className="fg-camera-start" onClick={() => void camera.startCamera()}>Start camera</button>}</>}
+      {source === 'esp32' || relayUrl || !allowLegacyLocal ? (espStream ? <img key={`${source}-${relayUrl}`} ref={espImageRef} crossOrigin="anonymous" src={relayUrl ? relayFeed.src || undefined : espStream} onLoad={() => { setEspReady(true); clearTimeout(retryStream.current); }} onError={() => { setEspReady(false); setVisionStatus('Camera stream unavailable — reconnecting…'); clearTimeout(retryStream.current); if (!relayUrl) retryStream.current = setTimeout(() => setStreamAttempt(n => n + 1), 3000); }} alt={`${cameraName} live stream`} /> : <CameraWaiting />) : <>{camera.isActive ? <video ref={camera.videoRef} autoPlay muted playsInline /> : <CameraWaiting />} {!camera.isActive && <button className="fg-camera-start" onClick={() => void camera.startCamera()}>Start camera</button>}</>}
       <span className={`fg-camera-live-badge ${cameraOnline ? '' : 'offline'}`}><i />{cameraOnline ? 'Live' : 'Connecting'}</span>
       <time>{new Date().toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</time>
     </section>

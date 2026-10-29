@@ -9,6 +9,7 @@ import { startLiveConnection } from '../services/liveConnection';
 import { preloadDashboard } from '../services/dashboardData';
 import { LiveAlarm } from '../components/security/LiveAlarm';
 import { useFloorGuardSettings } from '../hooks/useFloorGuardSettings';
+import { LocalRelayProvider } from '../hooks/useLocalRelay';
 const HistoryPage = lazy(() => import('../pages/HistoryPage').then(module => ({ default: module.HistoryPage })));
 
 const CameraPage = lazy(() => import('../pages/CameraPage').then(module => ({ default: module.CameraPage })));
@@ -29,6 +30,7 @@ export const App: React.FC = () => {
 
   return (
     <MqttProvider>
+    <LocalRelayProvider>
     <BrowserRouter>
       <LiveAlarm />
       {isLoading && <SplashScreen onComplete={finishSplash} />}
@@ -47,6 +49,7 @@ export const App: React.FC = () => {
         </Suspense>
       </MobileAppChrome>
     </BrowserRouter>
+    </LocalRelayProvider>
     </MqttProvider>
   );
 };
