@@ -14,7 +14,9 @@ const publicProfile = ({ _id, ...profile }: Record<string, unknown>) => profile 
 // Atlas may block the laptop's changing public IP while allowing Render's stable service.
 async function proxyProfiles(req: Request, res: Response): Promise<boolean> {
   const remote = process.env.FLOOR_REMOTE_API_URL?.replace(/\/$/, '');
-  if (!remote || process.env.RENDER || process.env.RENDER_EXTERNAL_URL) return false;
+  // Render exposes one of these runtime signals. The port guard also prevents
+  // a production process from proxying profile calls back to itself.
+  if (!remote || process.env.RENDER || process.env.RENDER_EXTERNAL_URL || process.env.PORT === '10000') return false;
   try {
     const path = req.params.id ? `/api/profiles/${encodeURIComponent(req.params.id)}` : '/api/profiles';
     const response = await fetch(`${remote}${path}`, {
