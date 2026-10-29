@@ -83,7 +83,7 @@ function useMqttSession(settings: FloorGuardSettings) {
     const prefix = settings.mqttTopicPrefix.replace(/^\/+|\/+$/g, '');
     if (!clientRef.current?.connected || !prefix) { setCommandStatus('Connect MQTT before sending a door command.'); return false; }
     if (pendingDoor.current) { setCommandStatus('Waiting for the previous door command to finish.'); return false; }
-    const id = crypto.randomUUID();
+    const id = globalThis.crypto?.randomUUID?.() || `fg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     pendingDoor.current = { id, on, action, sentAt: Date.now() };
     setCommandStatus(`Door ${action} requested. Waiting for controller confirmation…`);
     clientRef.current.publish(`${prefix}/command`, JSON.stringify({ type: 'set_door', on, requestId: id, ts: new Date().toISOString() }), { qos: 1, retain: false }, error => {
@@ -106,7 +106,7 @@ function useMqttSession(settings: FloorGuardSettings) {
 
   const stopDeviceAlarm = useCallback(() => {
     if (!clientRef.current?.connected) return false;
-    const id = crypto.randomUUID();
+    const id = globalThis.crypto?.randomUUID?.() || `fg-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     pendingStop.current = { id, sentAt: Date.now() }; setCommandStatus('Phone alarm stopped. Waiting for hardware stop confirmation…');
     clientRef.current.publish(`${settings.mqttTopicPrefix.replace(/^\/+|\/+$/g, '')}/command`, JSON.stringify({ type: 'stop_alarm', requestId: id, ts: new Date().toISOString() }), { qos: 1 });
     return true;

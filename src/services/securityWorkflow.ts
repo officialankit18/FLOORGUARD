@@ -19,6 +19,9 @@ subscribeLive(message => {
   if (message.type === 'NEW_SECURITY_EVENT' || message.type === 'SECURITY_EVENT_UPDATED') {
     historyQuery.update(current => current ? [message.data, ...current.filter(event => event.id !== message.data.id)].sort((a, b) => b.timestamp.localeCompare(a.timestamp)) : undefined);
   }
+  if (message.type === 'SECURITY_EVENT_DELETED' && typeof message.data?.id === 'string') {
+    historyQuery.update(current => current?.filter(event => event.id !== message.data.id));
+  }
   if (message.type === 'CONNECTION_ESTABLISHED') void historyQuery.load();
 });
 

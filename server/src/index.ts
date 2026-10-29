@@ -34,8 +34,9 @@ import {
   clearAllProfiles
 } from './controllers/profileController';
 import { store } from './database/store';
-import { getMongoStatus, hydrate, isMongoEnabled, saveDevice, saveEvent, saveProfile } from './services/mongoPersistence';
+import { getMongoStatus, hydrate, isMongoEnabled } from './services/mongoPersistence';
 import { personDetectorStatus, warmPersonDetector } from './services/personDetector';
+import { entranceMonitorStatus, startEntranceMonitor } from './services/entranceMonitor';
 
 dotenv.config();
 
@@ -109,6 +110,7 @@ app.get('/api/health', async (_req, res) => {
     floorVerifier: process.env.FLOOR_VERIFIER_ENABLED === '1' || (!process.env.RENDER && !process.env.RENDER_EXTERNAL_URL && process.env.FLOOR_VERIFIER_ENABLED !== '0') ? personDetectorStatus() : 'Disabled on this backend',
   });
 });
+app.get('/api/entrance-monitor/status', (_req, res) => res.set('Cache-Control', 'no-store').json({ enabled: !(process.env.RENDER || process.env.RENDER_EXTERNAL_URL || process.env.ENTRANCE_MONITOR_ENABLED === '0'), ...entranceMonitorStatus() }));
 
 app.get('/api/keepalive', (_req, res) => {
   res.set('Cache-Control', 'no-store').json({ status: 'OK', service: 'FLOORGUARD', timestamp: new Date().toISOString() });
@@ -172,19 +174,8 @@ async function bootstrapMongo() {
       console.warn('[MongoDB] Atlas unavailable. Migration skipped; cloud history was not loaded.');
       return;
     }
-    if (cloud.devices.length || cloud.events.length || cloud.profiles.length) {
-      store.setCloudSnapshot(cloud);
-      console.log(`[MongoDB] Cloud history loaded: ${cloud.events.length} events, ${cloud.profiles.length} profiles, ${cloud.devices.length} devices.`);
-    } else if (process.env.RENDER || process.env.RENDER_EXTERNAL_URL) {
-      console.warn('[MongoDB] Cloud database is empty. Skipping migration from Render local files.');
-    } else {
-      await Promise.all([
-        ...store.getDevices().map(saveDevice),
-        ...store.getEvents().map(saveEvent),
-        ...store.getProfiles().map(saveProfile),
-      ]);
-      console.log('[MongoDB] Existing local history migrated.');
-    }
+    store.setCloudSnapshot(cloud);
+    console.log(`[MongoDB] Cloud history loaded: ${cloud.events.length} events, ${cloud.profiles.length} profiles, ${cloud.devices.length} devices.`);
   } catch (error) {
     console.warn('[MongoDB] Cloud bootstrap failed; using local history:', error);
   }
@@ -196,6 +187,7 @@ async function startServer() {
   console.log(`[FLOOR GUARD Backend] Server running on http://localhost:${PORT}`);
   console.log(`[FLOOR GUARD Backend] WebSocket streaming live on ws://localhost:${PORT}/ws`);
   startMqttBridge();
+  startEntranceMonitor();
   if (process.env.FLOOR_VERIFIER_ENABLED === '1' || (!process.env.RENDER && !process.env.RENDER_EXTERNAL_URL && process.env.FLOOR_VERIFIER_ENABLED !== '0')) warmPersonDetector();
   startKeepAlive();
   });

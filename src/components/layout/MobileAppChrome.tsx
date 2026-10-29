@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, Camera, Settings, History, UsersRound, Menu, Bell, X } from 'lucide-react';
+import { historyQuery } from '../../services/securityWorkflow';
+import { NotificationService } from '../../services/notificationService';
 
 const navItems = [
   { to: '/', label: 'Home', icon: Home },
@@ -13,6 +15,25 @@ const navItems = [
 export const MobileAppChrome: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const [panel, setPanel] = useState('');
+  const [notificationStatus, setNotificationStatus] = useState('');
+  const [lastSeen, setLastSeen] = useState(() => Number(localStorage.getItem('floorguard.notifications.seen') || 0));
+  const [clearedAt, setClearedAt] = useState(() => Number(localStorage.getItem('floorguard.notifications.clearedAt') || 0));
+  const history = useSyncExternalStore(historyQuery.subscribe, historyQuery.getSnapshot);
+  useEffect(() => { void historyQuery.load(); }, []);
+  const events = (history.data || []).filter(event => event.mode === 'LIVE_CONNECTED' && Date.parse(event.timestamp) > clearedAt).slice(0, 30);
+  const unread = events.filter(event => Date.parse(event.timestamp) > lastSeen).length;
+  const openNotifications = () => {
+    const next = panel === 'notifications' ? '' : 'notifications';
+    setPanel(next);
+    if (next) { const now = Date.now(); setLastSeen(now); localStorage.setItem('floorguard.notifications.seen', String(now)); void historyQuery.load(true); }
+  };
+  const clearNotifications = () => {
+    const now = Date.now();
+    setClearedAt(now);
+    setLastSeen(now);
+    localStorage.setItem('floorguard.notifications.clearedAt', String(now));
+    localStorage.setItem('floorguard.notifications.seen', String(now));
+  };
   return (
     <div className="fg-reference-shell min-h-screen bg-fg-surface text-fg-ink pb-24">
       <header className="sticky top-0 z-40 border-b border-fg-line bg-white/95 backdrop-blur-md">
@@ -29,9 +50,9 @@ export const MobileAppChrome: React.FC<{ children: React.ReactNode }> = ({ child
             className="fg-brand-wordmark block w-full min-w-0 justify-self-center object-contain"
           />
           </Link>
-          <button className="fg-header-icon" aria-label="Notifications" onClick={() => setPanel(panel === 'notifications' ? '' : 'notifications')}><Bell /></button>
+          <button className="fg-header-icon fg-notification-trigger" aria-label={`Notifications${unread ? `, ${unread} new` : ''}`} onClick={openNotifications}><Bell />{unread > 0 && <span>{unread > 9 ? '9+' : unread}</span>}</button>
         </div>
-        {panel && <div className="fg-header-panel"><button aria-label="Close panel" onClick={() => setPanel('')}><X size={18}/></button><strong>{panel === 'menu' ? 'FLOORGUARD' : 'Notifications'}</strong><p>{panel === 'menu' ? 'Use the bottom navigation to explore the app.' : 'Live intrusion alerts will appear automatically.'}</p></div>}
+        {panel && <div className="fg-header-panel"><button className="fg-panel-close" aria-label="Close panel" onClick={() => setPanel('')}><X size={18}/></button><strong>{panel === 'menu' ? 'FLOORGUARD' : 'Notifications'}</strong>{panel === 'menu' ? <div className="fg-menu-links"><Link to="/working-model" onClick={() => setPanel('')}>Working Model <span>See the complete visitor and intrusion flow</span></Link><Link to="/about" onClick={() => setPanel('')}>About Team 5G <span>Meet the people behind FLOORGUARD</span></Link></div> : <><div className="fg-notification-heading"><p>Recent home activity</p><button type="button" onClick={clearNotifications} disabled={!events.length}>Clear all</button></div><div className="fg-notification-list">{events.length ? events.map(event => <article key={event.id} className={event.severity === 'critical' ? 'critical' : ''}>{event.metadata?.snapshotUrl && <img src={event.metadata.snapshotUrl} alt="Event snapshot" loading="lazy" />}<div><b>{event.eventType}</b><p>{event.description}</p><time>{new Date(event.timestamp).toLocaleString()}</time></div></article>) : <p>{history.isLoading ? 'Loading activity…' : 'No recent notifications.'}</p>}</div><button type="button" className="fg-enable-notifications" onClick={() => void NotificationService.enablePush().then(setNotificationStatus).catch(error => setNotificationStatus(error instanceof Error ? error.message : 'Could not enable notifications.'))}>Enable phone notifications</button>{notificationStatus && <p role="status">{notificationStatus}</p>}<Link to="/history" onClick={() => setPanel('')}>View all history</Link></>}</div>}
       </header>
       {children}
       <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-fg-line bg-white/95 px-3 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-md">

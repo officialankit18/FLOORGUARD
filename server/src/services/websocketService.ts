@@ -66,6 +66,16 @@ export function broadcastEventUpdate(event: SecurityEvent) {
   wss?.clients.forEach(client => { if (client.readyState === WebSocket.OPEN) client.send(payload); });
 }
 
+export function broadcastEventDeleted(id: string) {
+  const payload = JSON.stringify({ type: 'SECURITY_EVENT_DELETED', data: { id } });
+  wss?.clients.forEach(client => { if (client.readyState === WebSocket.OPEN) client.send(payload); });
+}
+
+export function broadcastVisionResult(result: { status: string; face: string; name?: string; box?: { x: number; y: number; width: number; height: number }; width?: number; height?: number; at: number }) {
+  const payload = JSON.stringify({ type: 'FACE_MONITOR_RESULT', data: result });
+  wss?.clients.forEach(client => { if (client.readyState === WebSocket.OPEN) client.send(payload); });
+}
+
 export function broadcastProfilesChanged() {
   wss?.clients.forEach(client => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify({ type: 'PROFILES_CHANGED' })); });
 }

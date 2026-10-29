@@ -46,6 +46,7 @@ subscribeLive(message => {
   if (message.type === 'PROFILES_CHANGED') void profilesQuery.load(true);
   if (message.type === 'NEW_SECURITY_EVENT') upsertEvent(message.data);
   if (message.type === 'SECURITY_EVENT_UPDATED') upsertEvent(message.data, false);
+  if (message.type === 'SECURITY_EVENT_DELETED' && typeof message.data?.id === 'string') removeCachedEvent(message.data.id);
   if (message.type === 'DEVICE_TELEMETRY_UPDATE') devicesQuery.update(current => ({ success: true, data: [message.data, ...(current?.data.filter(device => device.deviceId !== message.data.deviceId) || [])] }));
   if (message.type === 'CONNECTION_ESTABLISHED') {
     if (profilesQuery.getSnapshot().data) void profilesQuery.load(true);

@@ -14,6 +14,8 @@ export function notificationCategory(eventType: SecurityEvent['eventType']) {
 export class NotificationService {
   private static recentlyNotified = new Map<string, number>();
   static async enablePush(requestPermission = true): Promise<string> {
+    if (!window.isSecureContext) return 'Phone notifications require the HTTPS FLOORGUARD site. Open floorguard.onrender.com on your phone.';
+    if (!('Notification' in window)) return 'Notifications are not supported in this browser.';
     const permission = requestPermission ? await this.enable() : Notification.permission;
     if (permission !== 'granted') return `Notification permission: ${permission}.`;
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return 'Background push is not supported in this browser.';

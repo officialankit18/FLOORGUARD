@@ -7,7 +7,7 @@ let client: MongoClient | null = null;
 let db: Db | null = null;
 let connecting: Promise<boolean> | null = null;
 let retryAfter = 0;
-const RETRY_DELAY_MS = 60_000;
+const RETRY_DELAY_MS = 10_000;
 
 async function connect() {
   if (db) return true;
@@ -49,7 +49,9 @@ export function isMongoEnabled() { return Boolean(process.env.MONGODB_URI); }
 
 export async function getMongoStatus(): Promise<'Connected' | 'Not configured' | 'Offline'> {
   if (!process.env.MONGODB_URI) return 'Not configured';
-  return await connect() ? 'Connected' : 'Offline';
+  if (!await connect() || !db) return 'Offline';
+  try { await db.command({ ping: 1 }); return 'Connected'; }
+  catch { return 'Offline'; }
 }
 
 export async function saveDevice(device: DeviceTelemetry) {

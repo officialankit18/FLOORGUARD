@@ -185,6 +185,11 @@ class Store {
     return this.data.profiles;
   }
 
+  public replaceProfilesFromCloud(profiles: EnrolledProfile[]) {
+    this.data.profiles = profiles;
+    this.save(this.data);
+  }
+
   public addProfile(profile: EnrolledProfile): EnrolledProfile {
     this.data.profiles.push(profile);
     this.save(this.data);

@@ -137,6 +137,10 @@ export class ApiClient {
     return this.request(`/profiles/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name }) });
   }
 
+  public static async updateProfile(id: string, changes: { name?: string; photoPreviewUrl?: string; descriptor?: number[] }): Promise<{ success: boolean; data: EnrolledProfile }> {
+    return this.request(`/profiles/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(changes) });
+  }
+
   public static async clearAllProfiles(): Promise<{ success: boolean; message: string }> {
     return this.request('/profiles', { method: 'DELETE' });
   }

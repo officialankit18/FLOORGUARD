@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { store } from '../database/store';
-import { broadcastEvent, broadcastEventUpdate } from '../services/websocketService';
+import { broadcastEvent, broadcastEventDeleted, broadcastEventUpdate } from '../services/websocketService';
 import { SecurityEvent } from '../../../src/types/events';
 
 export const getEvents = (req: Request, res: Response) => {
@@ -138,6 +138,7 @@ export const deleteEvent = (req: Request, res: Response) => {
   if (!deleted) {
     return res.status(404).json({ success: false, error: 'Event not found' });
   }
+  broadcastEventDeleted(id);
   return res.json({ success: true, message: 'Event removed from log' });
 };
 

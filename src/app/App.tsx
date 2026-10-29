@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { MobileAppChrome } from '../components/layout/MobileAppChrome';
 import { DashboardPage } from '../pages/DashboardPage';
 import { SplashScreen } from '../components/branding/SplashScreen';
@@ -15,6 +15,8 @@ const HistoryPage = lazy(() => import('../pages/HistoryPage').then(module => ({ 
 const CameraPage = lazy(() => import('../pages/CameraPage').then(module => ({ default: module.CameraPage })));
 const SettingsPage = lazy(() => import('../pages/SettingsPage').then(module => ({ default: module.SettingsPage })));
 const MembersPage = lazy(() => import('../pages/MembersPage').then(module => ({ default: module.MembersPage })));
+const WorkingModelPage = lazy(() => import('../pages/WorkingModelPage').then(module => ({ default: module.WorkingModelPage })));
+const AboutPage = lazy(() => import('../pages/AboutPage').then(module => ({ default: module.AboutPage })));
 
 export const App: React.FC = () => {
   const { settings } = useFloorGuardSettings();
@@ -38,14 +40,15 @@ export const App: React.FC = () => {
         <Suspense fallback={<div className="mx-auto max-w-xl px-5 py-8" role="status"><div className="h-44 animate-pulse rounded-3xl bg-fg-yellowSoft" /><p className="mt-4 text-sm text-fg-muted">Opening…</p></div>}>
         <Routes>
           <Route path="/" element={<DashboardPage />} />
-          <Route path="/camera" element={null} />
+          <Route path="/camera" element={<CameraPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/members" element={<MembersPage />} />
+          <Route path="/working-model" element={<WorkingModelPage />} />
+          <Route path="/about" element={<AboutPage />} />
           <Route path="/project" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-        {!isLoading && <PersistentCamera />}
         </Suspense>
       </MobileAppChrome>
     </BrowserRouter>
@@ -53,10 +56,3 @@ export const App: React.FC = () => {
     </MqttProvider>
   );
 };
-
-function PersistentCamera() {
-  const { pathname } = useLocation();
-  // Keep entrance monitoring alive while the app itself is open, not only after
-  // the visitor has manually opened the Camera screen.
-  return <div hidden={pathname !== '/camera'}><CameraPage /></div>;
-}

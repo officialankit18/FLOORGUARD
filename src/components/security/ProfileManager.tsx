@@ -14,6 +14,7 @@ interface ProfileManagerProps {
   onProfilesChanged: () => void;
   showList?: boolean;
   onCaptureSnapshot?: () => string | null;
+  editingProfile?: EnrolledProfile | null;
 }
 
 export const ProfileManager: React.FC<ProfileManagerProps> = ({
@@ -22,6 +23,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
   profiles,
   onProfilesChanged,
   showList = true,
+  editingProfile = null,
 }) => {
   const [name, setName] = useState('');
   const [role, setRole] = useState<EnrolledProfile['role']>('Resident');
@@ -52,6 +54,16 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
     }
     return () => { localStreamRef.current?.getTracks().forEach(track => track.stop()); localStreamRef.current = null; };
   }, [isOpen]);
+  useEffect(() => {
+    if (!isOpen) return;
+    setName(editingProfile?.name || '');
+    setRole(editingProfile?.role || 'Resident');
+    setNotes(editingProfile?.notes || '');
+    setPhotoPreview(editingProfile?.photoPreviewUrl || null);
+    setConsent(Boolean(editingProfile?.consentGranted));
+    setErrorMsg(null);
+    setSuccessMsg(null);
+  }, [isOpen, editingProfile?.id]);
   useEffect(() => {
     if (cameraActive && videoRef.current && localStreamRef.current) {
       videoRef.current.srcObject = localStreamRef.current;
@@ -95,15 +107,29 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10_000_000) {
       setErrorMsg('Please select an image file (JPEG, PNG, WebP).');
       return;
     }
 
     const reader = new FileReader();
     reader.onload = () => {
-      setPhotoPreview(reader.result as string);
-      setErrorMsg(null);
+      const image = new Image();
+      image.onload = () => {
+        const canvas = document.createElement('canvas');
+        const scale = Math.min(1, 900 / Math.max(image.width, image.height));
+        canvas.width = Math.round(image.width * scale);
+        canvas.height = Math.round(image.height * scale);
+        const context = canvas.getContext('2d');
+        if (!context) { setErrorMsg('Photo could not be prepared.'); return; }
+        context.fillStyle = '#fff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        setPhotoPreview(canvas.toDataURL('image/jpeg', .8));
+        setErrorMsg(null);
+      };
+      image.onerror = () => setErrorMsg('Photo could not be opened.');
+      image.src = String(reader.result);
     };
     reader.readAsDataURL(file);
   };
@@ -131,39 +157,28 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
     setIsProcessing(true);
 
     try {
-      // 1. Create an image element to extract the 128-d descriptor
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = photoPreview;
-
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = () => reject(new Error('Failed to decode image data for descriptor extraction.'));
-      });
-
-      // 2. Extract 128-d ResNet descriptor using FaceRecognitionService
-      const extractResult = await FaceRecognitionService.extractDescriptorFromElement(img);
-
-      if (!extractResult || !extractResult.descriptor || extractResult.descriptor.length !== 128) {
-        throw new Error('No face detected in reference photo. Ensure proper lighting and a frontal facial angle.');
+      const photoChanged = !editingProfile || photoPreview !== editingProfile.photoPreviewUrl;
+      let descriptor = editingProfile?.descriptor;
+      if (photoChanged) {
+        const img = new Image();
+        img.src = photoPreview;
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = () => reject(new Error('Failed to decode image data for descriptor extraction.'));
+        });
+        const extracted = await FaceRecognitionService.extractDescriptorFromElement(img);
+        if (!extracted || extracted.descriptor.length !== 128) throw new Error('No face detected in the photo. Use a clear, front-facing image.');
+        descriptor = extracted.descriptor;
       }
-
-      // 3. Post to backend
-      const payload: ProfileEnrollmentPayload = {
-        name: name.trim(),
-        role,
-        photoPreviewUrl: photoPreview,
-        descriptor: extractResult.descriptor,
-        notes: notes.trim(),
-        consentGranted: true,
-      };
-
-      const res = await ApiClient.enrollProfile(payload);
+      const res = editingProfile
+        ? await ApiClient.updateProfile(editingProfile.id, { name: name.trim(), ...(photoChanged ? { photoPreviewUrl: photoPreview, descriptor } : {}) })
+        : await ApiClient.enrollProfile({ name: name.trim(), role, photoPreviewUrl: photoPreview, descriptor: descriptor!, notes: notes.trim(), consentGranted: true } satisfies ProfileEnrollmentPayload);
       if (res.success) {
         stopLocalCamera();
         resetForm();
-        setSuccessMsg(`${res.data.name} added to your household.`);
+        setSuccessMsg(`${res.data.name} saved to MongoDB.`);
         onProfilesChanged();
+        if (editingProfile) onClose();
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to enroll profile.');
@@ -199,7 +214,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
   return <Modal isOpen={isOpen} onClose={onClose} title="Household members" subtitle="Add the people who belong at home." maxWidth="lg">
     <div className="fg-members space-y-5">
       <form onSubmit={handleEnroll} className="fg-card space-y-5">
-        <div><h4 className="text-lg font-bold">Add a member</h4><p className="text-sm mt-1">A name and one clear photo. That’s it.</p></div>
+        <div><h4 className="text-lg font-bold">{editingProfile ? 'Edit member' : 'Add a member'}</h4><p className="text-sm mt-1">{editingProfile ? 'Change the name or take a new face photo.' : 'A name and one clear photo. That’s it.'}</p></div>
         <fieldset disabled={isProcessing} className="space-y-5 min-w-0">
           <label className="block text-sm font-semibold">Full name<input autoComplete="off" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Alex Taylor" maxLength={80} required /></label>
           <div className="fg-member-photo">
@@ -210,7 +225,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({
             <div className="flex flex-wrap justify-center gap-2 mt-4"><button type="button" className="fg-button secondary" onClick={() => fileInputRef.current?.click()}><Upload size={16} />{photoPreview ? 'Change photo' : 'Choose photo'}</button>{cameraActive ? <><button type="button" className="fg-button" onClick={captureLocalCamera}><Camera size={16} />Capture photo</button><button type="button" className="fg-button secondary" onClick={stopLocalCamera}>Cancel camera</button></> : <button type="button" className="fg-button secondary" disabled={cameraStarting} onClick={() => void startLocalCamera()}><Camera size={16} />{cameraStarting ? 'Opening camera…' : 'Use this device camera'}</button>}</div>
           </div>
           <label className="flex items-start gap-3 text-xs leading-5 cursor-pointer"><input type="checkbox" className="mt-1 h-4 w-4 shrink-0" checked={consent} onChange={e => setConsent(e.target.checked)} required /><span>This person agrees to save their photo for face recognition.</span></label>
-          <button type="submit" disabled={isProcessing || !name.trim() || !photoPreview || !consent} className="fg-button w-full"><UserPlus size={18} />{isProcessing ? 'Adding member…' : 'Add member'}</button>
+          <button type="submit" disabled={isProcessing || !name.trim() || !photoPreview || !consent} className="fg-button w-full"><UserPlus size={18} />{isProcessing ? 'Saving member…' : editingProfile ? 'Save changes' : 'Add member'}</button>
         </fieldset>
         {errorMsg && <p role="alert" className="rounded-xl bg-red-50 text-red-700 p-3 text-sm">{errorMsg}</p>}
         {successMsg && <p role="status" className="fg-notice flex items-center gap-2"><CheckCircle2 size={18} />{successMsg}</p>}
